@@ -50,7 +50,7 @@ class TaskManager:
             session = await self.session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id, state={})
             logger.info(f"Created new session: {session_id}")
             
-        # Enhance the message with user context instruction for first interaction
+    
         enhanced_message = f"User ID: {user_id}\n\n{message}"
         
         request_content = adk_types.Content(role="user", parts=[adk_types.Part(text=enhanced_message)])

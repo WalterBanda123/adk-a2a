@@ -9,7 +9,9 @@ from google.adk.models.lite_llm import LiteLlm
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from common.user_service import UserService
+from common.product_service import ProductService
 from .tools.get_user_tool import create_get_user_tool
+from .tools.get_products_tool import create_get_products_tool
 
 
 
@@ -19,17 +21,19 @@ async def create_main_agent():
     print("--- Attempting to start and connect to elevenlabs-mcp via uvx ---")
     llm = LiteLlm(model="gemini/gemini-1.5-flash-latest", api_key=os.environ.get("GOOGLE_API_KEY"))
     
-    # Initialize user service
+    # Initialize services
     user_service = UserService()
+    product_service = ProductService()
     
     # Create tools
     get_user_tool = create_get_user_tool(user_service)
+    get_products_tool = create_get_products_tool(product_service)
     
     agent_instance = Agent(
         model=llm,
         name='store_assistant',
         description='A knowledgeable and friendly grocery store assistant for customers and store managers in Zimbabwe.',
-        tools=[get_user_tool],  # Add tools to the agent
+        tools=[get_user_tool, get_products_tool],  # Add tools to the agent
         instruction=(
         "You are a Smart Business Assistant agent for informal traders in Zimbabwe. You help small business owners, shopkeepers, and vendors manage their daily operations, accounts, and business strategies effectively.\n\n"
         
