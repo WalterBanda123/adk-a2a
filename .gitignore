@@ -1,5 +1,5 @@
 /.venv
 /.vscode
-/.store-agents/.env
+store-agents/.env
 **/.env
 **/__pycache__

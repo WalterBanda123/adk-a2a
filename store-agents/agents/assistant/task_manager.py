@@ -45,10 +45,10 @@ class TaskManager:
             logger.info(f"Generate new session_id: {session_id}")
             
             
-        session = self.session_service.get_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
+        session = await self.session_service.get_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
         
         if not session:
-            session =  self.session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id, state={})
+            session = await self.session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id, state={})
             
             logger.info(f"Created new session: {session_id}")
             
@@ -80,7 +80,7 @@ class TaskManager:
                 "message":final_message,
                 "status":"success",
                 "data":{
-                    "raw_events": raw_events[-3]
+                    "raw_events": raw_events[-1] if raw_events else None
                 }  
             }
             
