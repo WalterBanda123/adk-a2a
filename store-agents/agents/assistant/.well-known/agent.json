@@ -1,0 +1,43 @@
+{
+  "name": "store_assistant",
+  "description": "A knowledgeable and friendly assistant that helps informal traders and small business owners in Zimbabwe manage their business operations, accounting, strategy, and reporting.",
+  "version": "1.0.0",
+  "endpoints": ["run", "health", "analyze", "report", "advise"],
+  "capabilities": [
+    "accounting_support",
+    "financial_reporting",
+    "data_analysis",
+    "business_strategy",
+    "multilingual_support",
+    "auditing_assistance"
+  ],
+  "input_format": "application/json",
+  "output_format": "application/json",
+  "dependencies": [
+    "pandas",
+    "numpy",
+    "matplotlib",
+    "shona-translator",
+    "ndebele-translator"
+  ],
+  "author": "ADK Made Simple",
+  "documentation": "https://github.com/WalterBanda123/adk-a2a",
+  "features": {
+    "accounting": {
+      "description": "Tracks sales, expenses, customer balances, and generates basic financial statements."
+    },
+    "reporting": {
+      "description": "Generates clear sales, profit/loss, expense, and inventory reports by day/week/month."
+    },
+    "strategy_advice": {
+      "description": "Provides growth strategies, pricing guidance (USD/ZIG), and improvement tips."
+    },
+    "auditing": {
+      "description": "Flags anomalies and inconsistencies in business records and offers corrective suggestions."
+    },
+    "multilingual": {
+      "languages": ["English", "Shona", "Ndebele"],
+      "description": "Supports multiple languages based on user preference, set at start of session."
+    }
+  }
+}
