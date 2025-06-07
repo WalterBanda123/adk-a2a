@@ -1,4 +1,3 @@
 /.venv
 /.vscode
-.env
-store-agents/.env
+/.store-agents/.env
