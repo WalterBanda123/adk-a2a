@@ -60,5 +60,5 @@ async def create_main_agent():
     exit_stack = AsyncExitStack()
     return agent_instance, exit_stack
 
-root_agent = create_main_agent()
+root_agent = create_main_agent
 

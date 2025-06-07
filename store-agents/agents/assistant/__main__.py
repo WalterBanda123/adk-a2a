@@ -5,9 +5,12 @@ import uvicorn
 import asyncio 
 from dotenv import load_dotenv
 
+# Add the parent directory to Python path for absolute imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from .task_manager import TaskManager
 from .agent import root_agent
-from ...common.server import create_agent_server
+from common.server import create_agent_server
 
 
 logging.basicConfig(
@@ -27,7 +30,7 @@ task_manager_instance: TaskManager | None = None
 async def main():
     global task_manager_instance
     
-    agent_instance, exit_stack = await root_agent
+    agent_instance, exit_stack = await root_agent()
     
     async with exit_stack:
         

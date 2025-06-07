@@ -2,3 +2,4 @@
 /.vscode
 /.store-agents/.env
 **/.env
+**/__pycache__
