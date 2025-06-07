@@ -5,6 +5,7 @@ from typing import Dict, Any, Callable, Optional, List
 
 from fastapi import FastAPI, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 
@@ -30,6 +31,20 @@ def create_agent_server(
     well_known_path: Optional[str] = None
 ) -> FastAPI:
     app = FastAPI(title=f"{name} Agent", description=description)
+    
+    # Add CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:8100",
+            "http://127.0.0.1:8100",
+            "https://localhost:8100",
+            "https://127.0.0.1:8100"
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
     
     if well_known_path is None:
         module_path = inspect.getmodule(inspect.stack()[1][0]).__file__
