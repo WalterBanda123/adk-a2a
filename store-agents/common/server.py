@@ -23,14 +23,36 @@ class AgentResponse(BaseModel):
     
     
 def create_agent_server(
-    name:str,
-    description:str,
-    task_manager:Any
-)-> FastAPI:
-    """
-    .....
-    """
+    name: str,
+    description: str,
+    task_manager: Any,
+    endpoints: Optional[Dict[str, Callable]] = None,
+    well_known_path: Optional[str] = None
+) -> FastAPI:
     app = FastAPI(title=f"{name} Agent", description=description)
+    
+    if well_known_path is None:
+        module_path = inspect.getmodule(inspect.stack()[1][0]).__file__
+        well_known_path = os.path.join(os.path.dirname(module_path), ".well-known")
+    
+    os.makedirs(well_known_path, exist_ok=True)
+    
+    # Generate agent.json if it doesn't exist
+    agent_json_path = os.path.join(well_known_path, "agent.json")
+    if not os.path.exists(agent_json_path):
+        endpoint_names = ["run"]
+        if endpoints:
+            endpoint_names.extend(endpoints.keys())
+        
+        agent_metadata = {
+            "name": name,
+            "description": description,
+            "endpoints": endpoint_names,
+            "version": "1.0.0"
+        }
+        
+        with open(agent_json_path, "w") as f:
+            json.dump(agent_metadata, f, indent=2)
     
     @app.post("/run", response_model=AgentResponse)
     async def run(request: AgentRequest = Body(...)):
@@ -51,5 +73,13 @@ def create_agent_server(
                 data={"error_type": type(e).__name__},
                 session_id=request.session_id
             )
+            
+    @app.get("/.well-known/agent.json")
+    async def get_metadata():
+        with open(agent_json_path, "r") as f:
+            return JSONResponse(content=json.load(f))
+    if endpoints:
+        for path, handler in endpoints.items():
+            app.add_api_route(f"/{path}", handler, methods=["POST"])
             
     return app
