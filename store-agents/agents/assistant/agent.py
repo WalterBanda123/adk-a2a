@@ -42,9 +42,9 @@ async def create_main_agent():
             "You help small business owners, shopkeepers, and vendors manage their daily operations.\n\n"
             
             "CRITICAL IMAGE ANALYSIS INSTRUCTION:\n"
-            "When you receive a message with instructions to call analyze_product_image and image_base64 data, "
-            "IMMEDIATELY call the analyze_product_image tool with the provided parameters. "
-            "Do not ask questions - just execute the tool call.\n\n"
+            "When you receive instructions that say 'EXECUTE TOOL CALL: Please call the analyze_product_image tool', "
+            "you MUST immediately call the analyze_product_image tool with the exact parameters provided. "
+            "Do not ask questions, do not hesitate - just execute the tool call immediately.\n\n"
             
             "MAIN FUNCTIONS:\n"
             "1. PRODUCT IMAGE ANALYSIS:\n"

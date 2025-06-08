@@ -40,7 +40,7 @@ class ImageAnalysisService:
                     if project_id:
                         firebase_admin.initialize_app(cred, {
                             'projectId': project_id,
-                            'storageBucket': f'{project_id}.appspot.com'
+                            'storageBucket': 'deve-01.firebasestorage.app'
                         })
                     else:
                         firebase_admin.initialize_app(cred)
@@ -55,7 +55,7 @@ class ImageAnalysisService:
             # Get Firebase project ID for storage bucket
             project_id = os.getenv("FIREBASE_PROJECT_ID")
             if project_id:
-                self.storage_bucket = storage.bucket(f'{project_id}.appspot.com')
+                self.storage_bucket = storage.bucket('deve-01.firebasestorage.app')
             else:
                 # Try to get default bucket
                 try:
@@ -70,7 +70,7 @@ class ImageAnalysisService:
                                 cred_data = json.load(f)
                                 project_id = cred_data.get('project_id')
                                 if project_id:
-                                    self.storage_bucket = storage.bucket(f'{project_id}.appspot.com')
+                                    self.storage_bucket = storage.bucket('deve-01.firebasestorage.app')
                     except Exception:
                         pass
             
@@ -137,9 +137,10 @@ class ImageAnalysisService:
             product_info = self._extract_product_info(vision_results, product_id, user_id)
             
             # Step 4: Upload processed image to Firebase Storage
+            # New folder structure: stores/{user_id}/images/{product_id}.jpg
             image_url = await self._upload_image_to_storage(
                 processed_image_data, 
-                f"products/{user_id}/{product_id}.jpg"
+                f"stores/{user_id}/images/{product_id}.jpg"
             )
             
             # Step 5: Add image URL to product info
@@ -197,26 +198,47 @@ class ImageAnalysisService:
             return image_data
     
     async def _analyze_with_vision(self, image_data: bytes) -> Dict[str, Any]:
-        """Analyze image using Google Vision API"""
+        """Analyze image using Google Vision API with timeout handling"""
         try:
+            import asyncio
+            
+            # Create the image object
             image = vision.Image(content=image_data)
             
-            # Perform text detection
-            text_response = self.vision_client.text_detection(image=image)
-            texts = text_response.text_annotations
+            # Perform text detection with timeout
+            try:
+                text_response = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, self.vision_client.text_detection, image
+                    ), timeout=10.0
+                )
+                texts = text_response.text_annotations
+            except asyncio.TimeoutError:
+                logger.warning("Vision API text detection timed out")
+                texts = []
             
-            # Perform object detection
-            object_response = self.vision_client.object_localization(image=image)
-            objects = object_response.localized_object_annotations
+            # Perform label detection (faster than object detection)
+            try:
+                label_response = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, self.vision_client.label_detection, image
+                    ), timeout=5.0
+                )
+                labels = label_response.label_annotations
+            except asyncio.TimeoutError:
+                logger.warning("Vision API label detection timed out")
+                labels = []
             
-            # Perform label detection
-            label_response = self.vision_client.label_detection(image=image)
-            labels = label_response.label_annotations
+            # Skip object detection for faster processing
+            objects = []
             
             # Extract and structure results
             detected_text = texts[0].description if texts else ""
             detected_objects = [obj.name for obj in objects]
-            detected_labels = [label.description for label in labels]
+            detected_labels = [label.description for label in labels[:5]]  # Limit to top 5 labels
+            
+            logger.info(f"Vision API detected text: '{detected_text[:100]}...' ({len(detected_text)} chars)")
+            logger.info(f"Vision API detected labels: {detected_labels}")
             
             return {
                 "text": detected_text,
@@ -235,17 +257,11 @@ class ImageAnalysisService:
         detected_labels = vision_results.get("labels", [])
         detected_objects = vision_results.get("objects", [])
         
-        # If Vision API is not available, provide fallback values
-        if not detected_text or detected_text == "VISION API NOT AVAILABLE":
-            name = "Product from Image"
-            brand = "Unknown Brand"
-            size = ""
-            unit = "pieces"
-            category = "General"
-            subcategory = "Miscellaneous"
-            barcode = ""
-            description = "Product imported from image - please update details"
-        else:
+        logger.info(f"Processing detected text: '{detected_text[:200]}...'")
+        logger.info(f"Processing detected labels: {detected_labels}")
+        
+        # If Vision API found meaningful text, use it
+        if detected_text and len(detected_text.strip()) > 0 and detected_text != "VISION API NOT AVAILABLE":
             # Extract product name and brand
             name, brand = self._extract_name_and_brand(detected_text)
             
@@ -260,6 +276,20 @@ class ImageAnalysisService:
             
             # Generate description
             description = self._generate_description(name, brand, size, unit)
+            
+            logger.info(f"Extracted: name='{name}', brand='{brand}', size='{size}', category='{category}'")
+        else:
+            # Fallback values when no meaningful text detected
+            name = "Product from Image"
+            brand = "Unknown Brand"
+            size = ""
+            unit = "pieces"
+            category = "General"
+            subcategory = "Miscellaneous"
+            barcode = ""
+            description = "Product imported from image - please update details"
+            
+            logger.info("Using fallback product information due to insufficient text detection")
         
         # Structure the product information
         product_info = {
@@ -279,7 +309,9 @@ class ImageAnalysisService:
             "barcode": barcode,
             "store_owner_id": user_id,
             "created_at": datetime.now().isoformat(),
-            "analysis_source": "image_ai" if detected_text != "VISION API NOT AVAILABLE" else "image_upload"
+            "analysis_source": "image_ai" if detected_text and len(detected_text.strip()) > 0 else "image_upload",
+            "vision_confidence": vision_results.get("confidence", 0),
+            "detected_text_length": len(detected_text) if detected_text else 0
         }
         
         return product_info

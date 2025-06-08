@@ -50,38 +50,23 @@ class TaskManager:
         # Check if there's an image in the context
         has_image = "image" in context and context["image"]
         
-        # Build the message - if there's an image, keep it simple
+        # Build the message - if there's an image, explicitly instruct the agent to call the tool
         if has_image:
             enhanced_message = f"""User ID: {user_id}
 
 {message}
 
-I can see you've shared an image. Let me analyze this product for you."""
+EXECUTE TOOL CALL: Please call the analyze_product_image tool with the following parameters:
+- image_base64: {context["image"]}
+- user_id: {user_id}
+- filename: product_image.jpg
+
+Return the clean JSON response from the tool."""
         else:
             enhanced_message = f"User ID: {user_id}\n\n{message}"
         
-        # Create content parts - start with text
+        # Create content parts - just use text, no need for image blob since we're passing base64 to tool
         content_parts = [adk_types.Part(text=enhanced_message)]
-        
-        # Add image to the conversation if present
-        if has_image:
-            try:
-                # Decode base64 image
-                image_data = base64.b64decode(context["image"])
-                
-                # Create image part for the content
-                image_part = adk_types.Part(
-                    inline_data=adk_types.Blob(
-                        mime_type="image/jpeg",  # Assume JPEG for now
-                        data=image_data
-                    )
-                )
-                content_parts.append(image_part)
-                
-                logger.info(f"Added image data to request ({len(image_data)} bytes)")
-                
-            except Exception as e:
-                logger.warning(f"Failed to process image data: {str(e)}")
         
         request_content = adk_types.Content(role="user", parts=content_parts)
         
