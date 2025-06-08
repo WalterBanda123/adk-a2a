@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 # Add the parent directory to Python path for absolute imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from .task_manager import TaskManager
-from .agent import root_agent
+from agents.assistant.task_manager import TaskManager
+from agents.assistant.agent import root_agent
 from common.server import create_agent_server
 
 
