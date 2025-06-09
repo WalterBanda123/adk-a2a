@@ -1,0 +1,6 @@
+google-generativeai
+google-adk
+reportlab
+firebase-admin
+python-dotenv
+litellm

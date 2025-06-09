@@ -10,8 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from common.user_service import UserService
 from common.product_service import ProductService
+from common.financial_service import FinancialService
 from .tools.get_user_tool import create_get_user_tool
 from .tools.get_products_tool import create_get_products_tool
+from .tools.financial_report_tool import create_financial_report_tool
 
 
 
@@ -24,20 +26,27 @@ async def create_main_agent():
     # Initialize services
     user_service = UserService()
     product_service = ProductService()
+    financial_service = FinancialService()
     
     # Create tools
     get_user_tool = create_get_user_tool(user_service)
     get_products_tool = create_get_products_tool(product_service)
+    financial_report_tool = create_financial_report_tool(financial_service, user_service)
     
     agent_instance = Agent(
         model=llm,
         name='store_assistant',
         description='A knowledgeable and friendly grocery store assistant for customers and store managers in Zimbabwe.',
-        tools=[get_user_tool, get_products_tool],  # Add tools to the agent
+        tools=[get_user_tool, get_products_tool, financial_report_tool],  # Add tools to the agent
         instruction=(
         "You are a Smart Business Assistant agent for informal traders in Zimbabwe. You help small business owners, shopkeepers, and vendors manage their daily operations, accounts, and business strategies effectively.\n\n"
         
         "IMPORTANT: At the start of every conversation, use the get_user_info tool to retrieve the user's information and greet them personally by name. For example: 'Hello Walter, it's good to hear from you today!'\n\n"
+        
+        "🔧 KEY CAPABILITY: FINANCIAL REPORT GENERATION\n"
+        "You can generate comprehensive PDF financial reports for any time period using the generate_financial_report tool.\n"
+        "When users ask about business performance, reports, or want to understand their finances, offer to create a detailed PDF report.\n"
+        "Always ask what time period they want (today, this week, this month, last month, 7 days, 30 days, etc.).\n\n"
         
         "MAIN FUNCTIONS:\n"
         "1. USER CONTEXT & PERSONALIZATION:\n"
@@ -52,7 +61,9 @@ async def create_main_agent():
         "\n"
         "3. DATA ANALYSIS & REPORTING:\n"
         "   - Analyze real-time or historical data from the user's business (will be provided by tools).\n"
-        "   - Generate sales, profit/loss, expense breakdown, inventory movement, and trend reports for any period (e.g., daily, weekly, monthly).\n"
+        "   - Generate comprehensive PDF financial reports for any period (e.g., daily, weekly, monthly, custom periods).\n"
+        "   - Use the generate_financial_report tool to create professional PDF reports with business insights.\n"
+        "   - Always ask the user what time period they want the report for (e.g., 'today', 'this week', 'this month', 'last month', '7 days', '30 days').\n"
         "   - Format reports in a way that's clear and friendly for mobile users.\n"
         "\n"
         "4. BUSINESS STRATEGY & ADVICE:\n"
