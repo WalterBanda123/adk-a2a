@@ -63,6 +63,9 @@ class FinancialService:
     
     async def _get_transactions(self, user_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         try:
+            if not self.db:
+                return []
+                
             transactions = []
             
             collection_names = ['transactions', 'sales', 'records', 'business_transactions']
@@ -81,10 +84,12 @@ class FinancialService:
                     docs = query.get()
                     
                     for doc in docs:
-                        data = doc.to_dict()
-                        data['id'] = doc.id
-                        data['collection'] = collection_name
-                        transactions.append(data)
+                        if doc.exists:
+                            data = doc.to_dict()
+                            if data:  # Add null check
+                                data['id'] = doc.id
+                                data['collection'] = collection_name
+                                transactions.append(data)
                         
                 except Exception as e:
                     logger.debug(f"Collection {collection_name} not found or no date field: {str(e)}")
@@ -98,6 +103,9 @@ class FinancialService:
     
     async def _get_sales(self, user_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         try:
+            if not self.db:
+                return []
+                
             sales = []
             
             # Convert datetime objects to date strings for comparison
@@ -111,9 +119,11 @@ class FinancialService:
                 docs = query.get()
                 
                 for doc in docs:
-                    data = doc.to_dict()
-                    data['id'] = doc.id
-                    sales.append(data)
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            sales.append(data)
                     
             except Exception as e:
                 logger.debug(f"Sales collection query failed: {str(e)}")
@@ -126,6 +136,9 @@ class FinancialService:
     
     async def _get_expenses(self, user_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         try:
+            if not self.db:
+                return []
+                
             expenses = []
             
             # Convert datetime objects to date strings for comparison
@@ -139,9 +152,11 @@ class FinancialService:
                 docs = query.get()
                 
                 for doc in docs:
-                    data = doc.to_dict()
-                    data['id'] = doc.id
-                    expenses.append(data)
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            expenses.append(data)
                     
             except Exception as e:
                 logger.debug(f"Expenses collection query failed: {str(e)}")
@@ -154,6 +169,9 @@ class FinancialService:
     
     async def _get_inventory(self, user_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         try:
+            if not self.db:
+                return []
+                
             inventory = []
             
             # Convert datetime objects to date strings for comparison
@@ -167,9 +185,11 @@ class FinancialService:
                 docs = query.get()
                 
                 for doc in docs:
-                    data = doc.to_dict()
-                    data['id'] = doc.id
-                    inventory.append(data)
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            inventory.append(data)
                     
             except Exception as e:
                 logger.debug(f"Inventory collection query failed: {str(e)}")
@@ -190,13 +210,19 @@ class FinancialService:
         completed_transactions = []
         
         for transaction in transactions:
-            if transaction.get('status') == 'completed':
+            if transaction and transaction.get('status') == 'completed':
                 amount = transaction.get('amount', 0)
-                total_revenue += amount
-                completed_transactions.append(transaction)
+                if isinstance(amount, (int, float)):
+                    total_revenue += amount
+                    completed_transactions.append(transaction)
         
         # Calculate total expenses
-        total_expenses = sum(expense.get('amount', 0) for expense in expenses)
+        total_expenses = 0
+        for expense in expenses:
+            if expense:
+                amount = expense.get('amount', 0)
+                if isinstance(amount, (int, float)):
+                    total_expenses += amount
         
         # Calculate profit/loss
         profit_loss = total_revenue - total_expenses
