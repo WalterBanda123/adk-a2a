@@ -521,9 +521,24 @@ class ProductVisionProcessor:
 
 
 def create_add_product_vision_tool():
-    """Create the product vision analysis tool"""
+    """Create the product vision analysis tool with AutoML integration"""
     
-    processor = ProductVisionProcessor()
+    # Try to use AutoML processor first, fallback to basic processor
+    try:
+        # Add project root to path to find automl_production_processor
+        import sys
+        import os
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        sys.path.insert(0, project_root)
+        
+        from automl_production_processor import AutoMLProductionProcessor
+        processor = AutoMLProductionProcessor()
+        use_automl = True
+        logger.info("🤖 Using AutoML Production Processor for enhanced accuracy")
+    except ImportError as e:
+        logger.warning(f"⚠️ AutoML processor not available ({e}), using fallback")
+        processor = ProductVisionProcessor()
+        use_automl = False
     
     async def add_product_vision_tool(
         image_data: str,

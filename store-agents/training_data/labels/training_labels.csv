@@ -1,0 +1,2 @@
+image_path,image_filename,brand,product_name,category,subcategory,size,unit,variant,confidence,pattern_matches,created_date,verified
+images/mazoe-raspberry.jpeg,mazoe-raspberry.jpeg,mazoe,Mazoe Raspberry,beverages,concentrates,,,raspberry,0.8999999999999999,brand:mazoe;pattern:mazoe.*raspberry;product:raspberry,2025-06-10,yes

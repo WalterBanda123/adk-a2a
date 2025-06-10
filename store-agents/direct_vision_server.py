@@ -68,24 +68,23 @@ async def health_check():
 @app.post("/analyze_image", response_model=ImageResponse)
 async def analyze_image(request: ImageRequest):
     """
-    Directly analyze product image using Google Cloud Vision API
-    Bypasses agent complexity for reliability
+    Directly analyze product image using Enhanced Processor with AutoML support
+    Uses AutoML first, falls back to enhanced Vision API
     """
     try:
         logger.info(f"📷 Received image analysis request from user: {request.user_id}")
-        
-        # Import vision processor here to avoid startup issues
-        from agents.assistant.tools.add_product_vision_tool import ProductVisionProcessor
-        
-        # Initialize processor
-        processor = ProductVisionProcessor()
         
         # Validate image data
         if not request.image_data:
             raise HTTPException(status_code=400, detail="Image data is required")
         
-        # Process image directly
-        vision_result = await processor.process_image(request.image_data, request.is_url)
+        # Use the integrated enhanced processor with AutoML support
+        from enhanced_add_product_vision_tool_clean import EnhancedProductVisionProcessor
+        processor = EnhancedProductVisionProcessor()
+        logger.info("🤖 Using Enhanced Processor with AutoML integration")
+        
+        # Process image using the unified processor (handles AutoML + fallback internally)
+        vision_result = processor.process_image(request.image_data, request.is_url, request.user_id)
         
         if vision_result.get("success"):
             product_info = vision_result.get("product", {})
