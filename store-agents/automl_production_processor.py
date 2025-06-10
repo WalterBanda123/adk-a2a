@@ -6,9 +6,16 @@ Connect trained AutoML model to existing vision system
 import json
 import base64
 import os
-from google.cloud import automl
 from typing import Dict, List, Any, Optional
 import logging
+
+# Handle missing AutoML dependency gracefully
+try:
+    from google.cloud import automl
+    AUTOML_AVAILABLE = True
+except ImportError:
+    automl = None
+    AUTOML_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +35,14 @@ class AutoMLProductionProcessor:
             self.model_path = None
         
         # Initialize AutoML client
-        if self.model_available:
+        if self.model_available and AUTOML_AVAILABLE:
             self.prediction_client = automl.PredictionServiceClient()
+        else:
+            self.prediction_client = None
         
-        # Load fallback processor
-        try:
-            from enhanced_add_product_vision_tool_clean import EnhancedProductVisionProcessor
-            self.fallback_processor = EnhancedProductVisionProcessor()
-        except ImportError:
-            logger.error("Fallback processor not available")
-            self.fallback_processor = None
+        # Initialize fallback processor lazily to avoid circular imports
+        self.fallback_processor = None
+        self._fallback_initialized = False
     
     def predict_with_automl(self, image_data: bytes, confidence_threshold: float = 0.5) -> Dict[str, Any]:
         """Make prediction using trained AutoML model"""
@@ -45,8 +50,17 @@ class AutoMLProductionProcessor:
         if not self.model_available:
             raise Exception("AutoML model not available")
         
+        if not AUTOML_AVAILABLE:
+            raise Exception("AutoML library not installed")
+            
+        if not self.prediction_client:
+            raise Exception("AutoML client not initialized")
+        
         try:
             # Prepare the image for prediction
+            if not automl:
+                raise Exception("AutoML not available")
+                
             image = automl.Image(image_bytes=image_data)
             payload = automl.ExamplePayload(image=image)
             
@@ -145,32 +159,97 @@ class AutoMLProductionProcessor:
                     logger.info(f"AutoML processing successful (confidence: {overall_confidence:.2f})")
                     return result
                 
-                elif use_fallback_on_low_confidence and self.fallback_processor:
-                    logger.info(f"AutoML confidence low ({overall_confidence:.2f}), using fallback")
-                    fallback_result = self.fallback_processor.process_image_for_product_detection(image_data)
-                    
-                    # Combine results, preferring AutoML where confident
-                    combined_result = self._combine_results(result, fallback_result)
-                    return combined_result
-                
+                elif use_fallback_on_low_confidence:
+                    self._initialize_fallback()
+                    if self.fallback_processor:
+                        logger.info(f"AutoML confidence low ({overall_confidence:.2f}), using fallback")
+                        # Convert bytes to base64 string for fallback processor
+                        if isinstance(image_data, bytes):
+                            image_data_str = base64.b64encode(image_data).decode('utf-8')
+                        else:
+                            image_data_str = str(image_data)
+                        
+                        fallback_result = self.fallback_processor.process_image(image_data_str, False)
+                        if fallback_result.get("success"):
+                            # Convert fallback result to AutoML format and combine
+                            product_data = fallback_result.get("product", {})
+                            fallback_converted = {
+                                "brand": product_data.get("brand", ""),
+                                "product_name": product_data.get("title", ""),
+                                "size": product_data.get("size", ""),
+                                "category": product_data.get("category", ""),
+                                "confidence_scores": {"overall": product_data.get("confidence", 0.4)},
+                                "overall_confidence": product_data.get("confidence", 0.4),
+                                "processing_method": "enhanced_vision_fallback"
+                            }
+                            
+                            # Combine results, preferring AutoML where confident
+                            combined_result = self._combine_results(result, fallback_converted)
+                            return combined_result
+                        else:
+                            return result
+                    else:
+                        return result
                 else:
                     return result
             
-            # Fallback only
-            elif self.fallback_processor:
-                logger.info("Using fallback processor (AutoML not available)")
-                return self.fallback_processor.process_image_for_product_detection(image_data)
-            
+            # Fallback only - AutoML not available
             else:
-                raise Exception("No processing method available")
+                self._initialize_fallback()
+                if self.fallback_processor:
+                    logger.info("Using fallback processor (AutoML not available)")
+                    # Convert bytes to base64 string for fallback processor
+                    if isinstance(image_data, bytes):
+                        image_data_str = base64.b64encode(image_data).decode('utf-8')
+                    else:
+                        image_data_str = str(image_data)
+                    
+                    fallback_result = self.fallback_processor.process_image(image_data_str, False)
+                    if fallback_result.get("success"):
+                        product_data = fallback_result.get("product", {})
+                        # Convert to AutoML format
+                        return {
+                            "brand": product_data.get("brand", ""),
+                            "product_name": product_data.get("title", ""),
+                            "size": product_data.get("size", ""),
+                            "category": product_data.get("category", ""),
+                            "confidence_scores": {"overall": product_data.get("confidence", 0.5)},
+                            "overall_confidence": product_data.get("confidence", 0.5),
+                            "processing_method": "enhanced_vision_fallback"
+                        }
+                    else:
+                        raise Exception("Fallback processing failed")
+                else:
+                    raise Exception("No processing method available")
         
         except Exception as e:
             logger.error(f"Product processing failed: {e}")
             
             # Final fallback
+            self._initialize_fallback()
             if self.fallback_processor:
                 logger.info("Using fallback due to error")
-                return self.fallback_processor.process_image_for_product_detection(image_data)
+                # Convert bytes to base64 string for fallback processor
+                if isinstance(image_data, bytes):
+                    image_data_str = base64.b64encode(image_data).decode('utf-8')
+                else:
+                    image_data_str = str(image_data)
+                
+                fallback_result = self.fallback_processor.process_image(image_data_str, False)
+                if fallback_result.get("success"):
+                    product_data = fallback_result.get("product", {})
+                    # Convert to AutoML format
+                    return {
+                        "brand": product_data.get("brand", ""),
+                        "product_name": product_data.get("title", ""),
+                        "size": product_data.get("size", ""),
+                        "category": product_data.get("category", ""),
+                        "confidence_scores": {"overall": product_data.get("confidence", 0.3)},
+                        "overall_confidence": product_data.get("confidence", 0.3),
+                        "processing_method": "enhanced_vision_error_fallback"
+                    }
+                else:
+                    raise
             else:
                 raise
     
@@ -224,6 +303,24 @@ class AutoMLProductionProcessor:
                 pass
         
         return status
+    
+    def _initialize_fallback(self):
+        """Lazily initialize fallback processor to avoid circular imports"""
+        if not self._fallback_initialized:
+            try:
+                from enhanced_add_product_vision_tool_clean import EnhancedProductVisionProcessor
+                self.fallback_processor = EnhancedProductVisionProcessor()
+                logger.info("✅ Fallback processor initialized")
+            except ImportError:
+                logger.error("❌ Fallback processor not available")
+                self.fallback_processor = None
+            self._fallback_initialized = True
+    
+    def _get_fallback_processor(self):
+        """Get fallback processor, initializing if needed"""
+        if not self._fallback_initialized:
+            self._initialize_fallback()
+        return self.fallback_processor
 
 # Integration with existing server
 def create_enhanced_processor():

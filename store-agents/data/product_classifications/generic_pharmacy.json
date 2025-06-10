@@ -1,0 +1,93 @@
+{
+  "country": "Generic",
+  "industry": "pharmacy",
+  "common_brands": [
+    "Johnson & Johnson",
+    "Pfizer",
+    "Bayer",
+    "GSK",
+    "Roche"
+  ],
+  "product_categories": {
+    "Medications": [
+      "Pain Relief",
+      "Cold & Flu",
+      "Antibiotics",
+      "Vitamins"
+    ],
+    "Personal Care": [
+      "Skincare",
+      "Hair Care",
+      "Oral Care",
+      "Body Care"
+    ],
+    "Health Supplements": [
+      "Vitamins",
+      "Minerals",
+      "Protein",
+      "Herbal"
+    ],
+    "Medical Supplies": [
+      "Bandages",
+      "Thermometers",
+      "First Aid"
+    ],
+    "Baby Care": [
+      "Diapers",
+      "Formula",
+      "Baby Food",
+      "Lotions"
+    ]
+  },
+  "size_patterns": [
+    "(\\d+)\\s*tablets?",
+    "(\\d+)\\s*capsules?",
+    "(\\d+(?:\\.\\d+)?)\\s*(ml|mg|g)",
+    "(\\d+)\\s*pieces?"
+  ],
+  "keywords": {
+    "Medications": [
+      "tablet",
+      "capsule",
+      "syrup",
+      "medicine",
+      "drug",
+      "pain",
+      "relief"
+    ],
+    "Personal Care": [
+      "cream",
+      "lotion",
+      "shampoo",
+      "soap",
+      "toothpaste"
+    ],
+    "Health Supplements": [
+      "vitamin",
+      "supplement",
+      "mineral",
+      "protein",
+      "herbal"
+    ],
+    "Medical Supplies": [
+      "bandage",
+      "thermometer",
+      "first aid",
+      "gauze"
+    ],
+    "Baby Care": [
+      "baby",
+      "diaper",
+      "formula",
+      "infant",
+      "newborn"
+    ]
+  },
+  "confidence_boosters": [
+    "pharmaceutical",
+    "medical",
+    "health",
+    "clinical",
+    "approved"
+  ]
+}

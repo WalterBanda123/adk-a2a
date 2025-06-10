@@ -46,13 +46,9 @@ class EnhancedProductVisionProcessor:
         self._client_initialized = False
         self.current_store_info: Optional[Dict] = None
         
+        # Initialize AutoML processor lazily to avoid circular imports
         self.automl_processor = None
-        try:
-            from automl_production_processor import AutoMLProductionProcessor
-            self.automl_processor = AutoMLProductionProcessor()
-            logger.info("✅ AutoML processor initialized")
-        except ImportError:
-            logger.warning("⚠️ AutoML processor not available, using enhanced Vision API only")
+        self._automl_initialized = False
         
         # Initialize dynamic product classifier
         if DYNAMIC_CLASSIFIER_AVAILABLE:
@@ -89,8 +85,23 @@ class EnhancedProductVisionProcessor:
         else:
             logger.warning("Google Cloud Vision API not available - install google-cloud-vision")
 
+    def _initialize_automl_processor(self):
+        """Initialize AutoML processor lazily to avoid circular imports"""
+        if not self._automl_initialized:
+            try:
+                from automl_production_processor import AutoMLProductionProcessor
+                self.automl_processor = AutoMLProductionProcessor()
+                logger.info("✅ AutoML processor initialized")
+            except ImportError:
+                logger.warning("⚠️ AutoML processor not available, using enhanced Vision API only")
+                self.automl_processor = None
+            self._automl_initialized = True
+
     def process_image(self, image_data: str, is_url: bool, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Process product image with AutoML first, fallback to enhanced Vision API"""
+        
+        # Initialize AutoML processor when first needed
+        self._initialize_automl_processor()
         
         # Try AutoML first
         if self.automl_processor:
