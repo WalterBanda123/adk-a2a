@@ -29,27 +29,9 @@ class ProductVisionProcessor:
     """High-performance product image processor using Google Cloud Vision API"""
     
     def __init__(self):
+        # Lazy initialization - don't create client until needed
         self.client = None
-        if VISION_AVAILABLE and vision and service_account:
-            try:
-                # Try to load service account credentials from the project root
-                credentials_path = os.path.join(project_root, 'vision-api-service.json')
-                
-                if os.path.exists(credentials_path):
-                    # Load credentials from service account file
-                    credentials = service_account.Credentials.from_service_account_file(credentials_path)
-                    self.client = vision.ImageAnnotatorClient(credentials=credentials)
-                    logger.info("Google Cloud Vision API client initialized with service account")
-                else:
-                    # Fall back to default credentials (environment variable or gcloud auth)
-                    self.client = vision.ImageAnnotatorClient()
-                    logger.info("Google Cloud Vision API client initialized with default credentials")
-                    
-            except Exception as e:
-                logger.error(f"Failed to initialize Vision API client: {e}")
-                logger.error("Make sure 'vision-api-service.json' exists in the project root or set GOOGLE_APPLICATION_CREDENTIALS")
-        else:
-            logger.warning("Google Cloud Vision API not available - install google-cloud-vision")
+        self._client_initialized = False
         
         # Zimbabwe-specific product mappings for better accuracy
         self.zimbabwe_brands = {
@@ -92,8 +74,39 @@ class ProductVisionProcessor:
             r'(\d+(?:\.\d+)?)\s*(?:kilos?|kilograms?)'
         ]
     
+    def _initialize_client(self):
+        """Initialize the Vision API client when first needed"""
+        if self._client_initialized:
+            return
+            
+        self._client_initialized = True
+        
+        if VISION_AVAILABLE and vision and service_account:
+            try:
+                # Try to load service account credentials from the project root
+                credentials_path = os.path.join(project_root, 'vision-api-service.json')
+                
+                if os.path.exists(credentials_path):
+                    # Load credentials from service account file
+                    credentials = service_account.Credentials.from_service_account_file(credentials_path)
+                    self.client = vision.ImageAnnotatorClient(credentials=credentials)
+                    logger.info("Google Cloud Vision API client initialized with service account")
+                else:
+                    # Fall back to default credentials (environment variable or gcloud auth)
+                    self.client = vision.ImageAnnotatorClient()
+                    logger.info("Google Cloud Vision API client initialized with default credentials")
+                    
+            except Exception as e:
+                logger.error(f"Failed to initialize Vision API client: {e}")
+                logger.error("Make sure 'vision-api-service.json' exists in the project root or set GOOGLE_APPLICATION_CREDENTIALS")
+        else:
+            logger.warning("Google Cloud Vision API not available - install google-cloud-vision")
+
     async def process_image(self, image_data: str, is_url: bool) -> Dict[str, Any]:
         """Process product image and extract structured information"""
+        # Initialize client when first needed
+        self._initialize_client()
+        
         if not self.client:
             return {
                 "success": False,
@@ -102,8 +115,10 @@ class ProductVisionProcessor:
         
         try:
             start_time = asyncio.get_event_loop().time()
+            logger.info("🔄 Starting image processing...")
             
             # Prepare image for Vision API
+            logger.info("📷 Preparing image for Vision API...")
             image = await self._prepare_image(image_data, is_url)
             if not image:
                 return {
@@ -111,46 +126,44 @@ class ProductVisionProcessor:
                     "error": "Failed to process image data"
                 }
             
-            # Run Vision API operations concurrently for speed
-            tasks = [
-                self._detect_labels(image),
-                self._detect_text(image),
-            ]
+            logger.info("🔍 Running Vision API detections...")
             
-            # Execute all detection tasks concurrently with proper error handling
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Safely extract results
+            # Run Vision API operations sequentially to avoid issues
             labels_result: List[Dict] = []
             text_result: List[Dict] = []
             
-            if len(results) > 0:
-                if isinstance(results[0], list):
-                    labels_result = results[0]
-                elif not isinstance(results[0], Exception):
-                    labels_result = []
-                    
-            if len(results) > 1:
-                if isinstance(results[1], list):
-                    text_result = results[1]
-                elif not isinstance(results[1], Exception):
-                    text_result = []
+            try:
+                logger.info("   Detecting labels...")
+                labels_result = await self._detect_labels(image)
+                logger.info(f"   Found {len(labels_result)} labels")
+            except Exception as e:
+                logger.warning(f"   Label detection failed: {e}")
+            
+            try:
+                logger.info("   Detecting text...")
+                text_result = await self._detect_text(image)
+                logger.info(f"   Found {len(text_result)} text elements")
+            except Exception as e:
+                logger.warning(f"   Text detection failed: {e}")
             
             # If primary methods don't yield good results, try web detection as fallback
             web_result: List[Dict] = []
             if not labels_result and not text_result:
                 try:
+                    logger.info("   Trying web detection as fallback...")
                     web_result = await self._detect_web_entities(image)
+                    logger.info(f"   Found {len(web_result)} web entities")
                 except Exception as e:
-                    logger.warning(f"Web detection failed: {e}")
+                    logger.warning(f"   Web detection failed: {e}")
             
+            logger.info("🧠 Parsing Vision API results...")
             # Parse and normalize the extracted data
             product_info = self._parse_vision_results(labels_result, text_result, web_result)
             
             processing_time = asyncio.get_event_loop().time() - start_time
             product_info["processing_time"] = round(processing_time, 2)
             
-            logger.info(f"Image processed in {processing_time:.2f} seconds")
+            logger.info(f"✅ Image processed successfully in {processing_time:.2f} seconds")
             
             return {
                 "success": True,
@@ -194,18 +207,8 @@ class ProductVisionProcessor:
             return []
             
         try:
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            
-            # Use the correct API method signature
-            def detect_labels_sync():
-                # Use getattr to avoid type checker issues
-                if hasattr(self.client, 'label_detection'):
-                    return getattr(self.client, 'label_detection')(image=image)
-                else:
-                    return None
-            
-            response = await loop.run_in_executor(None, detect_labels_sync)
+            # Use synchronous call - it's more reliable
+            response = self.client.label_detection(image=image)
             
             labels = []
             if response and hasattr(response, 'label_annotations'):
@@ -227,16 +230,8 @@ class ProductVisionProcessor:
             return []
             
         try:
-            loop = asyncio.get_event_loop()
-            
-            def detect_text_sync():
-                # Use getattr to avoid type checker issues
-                if hasattr(self.client, 'text_detection'):
-                    return getattr(self.client, 'text_detection')(image=image)
-                else:
-                    return None
-            
-            response = await loop.run_in_executor(None, detect_text_sync)
+            # Use synchronous call - it's more reliable
+            response = self.client.text_detection(image=image)
             
             texts = []
             if response and hasattr(response, 'text_annotations'):
@@ -258,16 +253,8 @@ class ProductVisionProcessor:
             return []
             
         try:
-            loop = asyncio.get_event_loop()
-            
-            def detect_web_sync():
-                # Use getattr to avoid type checker issues
-                if hasattr(self.client, 'web_detection'):
-                    return getattr(self.client, 'web_detection')(image=image)
-                else:
-                    return None
-            
-            response = await loop.run_in_executor(None, detect_web_sync)
+            # Use synchronous call - it's more reliable
+            response = self.client.web_detection(image=image)
             
             entities = []
             if response and hasattr(response, 'web_detection') and response.web_detection.web_entities:
@@ -302,15 +289,16 @@ class ProductVisionProcessor:
         all_descriptions = all_labels + all_web
         
         # Extract product information
-        title = self._extract_title(all_descriptions, all_text)
+        title, brand = self._extract_title_and_brand(all_descriptions, all_text) # Modified call
         size, unit = self._extract_size_and_unit(all_text)
         category, subcategory = self._extract_category(all_descriptions, all_text)
         description = self._generate_description(title, size, unit, category)
         
-        logger.info(f"🎯 DEBUG - Extracted title: {title}")
+        logger.info(f"🎯 DEBUG - Extracted title: {title}, Brand: {brand}")
         
         return {
             "title": title,
+            "brand": brand, # Added brand
             "size": size,
             "unit": unit,
             "category": category,
@@ -319,129 +307,109 @@ class ProductVisionProcessor:
             "confidence": self._calculate_confidence(labels, texts, web_entities)
         }
     
-    def _extract_title(self, descriptions: List[str], text: str) -> str:
-        """Extract the main product title/name"""
+    def _extract_title_and_brand(self, descriptions: List[str], text: str) -> Tuple[str, str]: # Renamed and signature changed
+        """Extract the main product title/name and brand"""
         
         lower_text = text.lower()
         text_lines = [line.strip() for line in lower_text.split('\n') if line.strip()]
+        
+        extracted_title = "Unknown Product"
+        extracted_brand = ""
 
         # Priority 1: Look for specific brand + product name combinations
-        # Example: "Mazoe Orange Crush"
-        for brand in self.zimbabwe_brands:
-            if brand in lower_text:
-                # Search for [Brand] [Flavor/Type] [Variant/Name]
-                # e.g. Mazoe Orange Crush, Delta Blue, Lobels Lemon Creams
-                # More sophisticated pattern matching could be added here if needed
-                # For now, we check if brand and other keywords appear close by
-                
+        for brand_keyword in self.zimbabwe_brands:
+            if brand_keyword in lower_text:
                 # Check for Mazoe specific patterns
-                if brand == 'mazoe':
+                if brand_keyword == 'mazoe':
                     if 'orange' in lower_text and 'crush' in lower_text:
-                        return "Mazoe Orange Crush"
-                    if 'raspberry' in lower_text and 'crush' in lower_text: # Example for other flavors
-                        return "Mazoe Raspberry Crush"
-                    if 'orange' in lower_text:
-                        return "Mazoe Orange"
+                        extracted_title = "Mazoe Orange Crush"
+                        extracted_brand = "Mazoe"
+                        return extracted_title, extracted_brand
+                    if 'raspberry' in lower_text and 'crush' in lower_text:
+                        extracted_title = "Mazoe Raspberry Crush"
+                        extracted_brand = "Mazoe"
+                        return extracted_title, extracted_brand
+                    if 'orange' in lower_text: # Broader Mazoe Orange
+                        extracted_title = "Mazoe Orange"
+                        extracted_brand = "Mazoe"
+                        # Don't return yet, might find "Crush" later or a more specific line
                 
-                # General approach: find the line containing the brand and return it if it seems descriptive
+                # General approach: find the line containing the brand
                 for line in text_lines:
-                    if brand in line:
-                        # Attempt to find a more complete name on this line
-                        # This is a simple heuristic, could be improved
+                    if brand_keyword in line:
                         potential_title = line
-                        # Remove very common words that might dilute the title
-                        common_fillers = ['product of', 'manufactured by', 'ingredients']
+                        common_fillers = ['product of', 'manufactured by', 'ingredients', 'best before', 'net weight']
                         for filler in common_fillers:
                             potential_title = potential_title.replace(filler, '')
+                        potential_title = potential_title.strip()
                         
-                        # If the line is reasonably long and contains the brand, it might be the title
-                        if len(potential_title.split()) > 1 and len(potential_title.split()) < 7: # Avoid very short/long lines
-                            return potential_title.strip().title()
+                        if len(potential_title.split()) > 1 and len(potential_title.split()) < 7:
+                            # If this line seems like a good title and we found a brand
+                            if not extracted_brand: # Prioritize first specific brand found this way
+                                extracted_brand = brand_keyword.title()
+                            # Prefer more specific titles
+                            if extracted_title == "Unknown Product" or len(potential_title) > len(extracted_title):
+                                 extracted_title = potential_title.title()
+                                 # If title contains the brand, ensure brand is set
+                                 if brand_keyword in potential_title.lower() and not extracted_brand:
+                                     extracted_brand = brand_keyword.title()
 
-        # Fallback to existing brand detection
-        text_words = lower_text.split()
-        detected_brands = []
-        
-        for brand in self.zimbabwe_brands:
-            if brand in text.lower():
-                detected_brands.append(brand)
-        
-        # If we found brands in text, try to construct a proper product name
-        if detected_brands:
-            # Look for flavor/variant keywords in text
-            flavor_keywords = ['raspberry', 'orange', 'apple', 'chocolate', 'vanilla', 'strawberry', 'mango', 'pineapple']
-            detected_flavors = [flavor for flavor in flavor_keywords if flavor in text.lower()]
-            
+
+        # If a specific title like "Mazoe Orange Crush" was found, brand is already set.
+        if extracted_brand and extracted_title != "Unknown Product" and extracted_brand.lower() in extracted_title.lower():
+            return extracted_title, extracted_brand
+
+        # Fallback brand detection if not set by specific patterns
+        if not extracted_brand:
+            detected_brands_in_text = []
+            for brand_keyword in self.zimbabwe_brands:
+                if brand_keyword in lower_text:
+                    detected_brands_in_text.append(brand_keyword)
+            if detected_brands_in_text:
+                extracted_brand = detected_brands_in_text[0].title() # Take the first one found
+
+        # If title is still unknown but we have a brand, try to construct title
+        if extracted_title == "Unknown Product" and extracted_brand:
+            flavor_keywords = ['raspberry', 'orange', 'apple', 'chocolate', 'vanilla', 'strawberry', 'mango', 'pineapple', 'lemon', 'grape']
+            detected_flavors = [flavor for flavor in flavor_keywords if flavor in lower_text]
             if detected_flavors:
-                # Combine brand and flavor
-                primary_brand = detected_brands[0].title()
-                primary_flavor = detected_flavors[0].title()
-                return f"{primary_brand} {primary_flavor}"
+                extracted_title = f"{extracted_brand} {detected_flavors[0].title()}"
             else:
-                # Just return the brand
-                return detected_brands[0].title()
+                # Try to find a noun phrase after the brand in text if possible
+                # This is complex; for now, just use brand if no other title part
+                extracted_title = extracted_brand 
+
+        # Further fallbacks for title if still "Unknown Product"
+        if extracted_title == "Unknown Product":
+            # Try to use the most descriptive line from OCR text if it's not too generic
+            for line in text_lines:
+                line_cleaned = line.strip()
+                if len(line_cleaned) > 5 and len(line_cleaned.split()) < 7 and any(c.isalpha() for c in line_cleaned):
+                    skip_words = ['ingredients', 'nutrition', 'www', 'http', 'ltd', 'company', 'tel', 'address', 'date']
+                    if not any(skip in line_cleaned.lower() for skip in skip_words):
+                        extracted_title = line_cleaned.title()
+                        break # Take the first plausible line
+            
+            if extracted_title == "Unknown Product": # If still not found
+                # Use descriptions from labels/web if available
+                food_indicators = ['drink', 'beverage', 'food', 'snack', 'juice']
+                food_products = [d for d in descriptions if any(indicator in d.lower() for indicator in food_indicators)]
+                if food_products:
+                    extracted_title = max(food_products, key=len).title()
+                else:
+                    generic_terms = ['bottle', 'plastic', 'container', 'package', 'product', 'item']
+                    specific_descriptions = [d for d in descriptions if not any(generic in d.lower() for generic in generic_terms)]
+                    if specific_descriptions:
+                        extracted_title = max(specific_descriptions, key=len).title()
         
-        # Look for complete product names in OCR text
-        # Split text into lines and look for meaningful product names
-        text_lines = text.split('\n')
-        for line in text_lines:
-            line = line.strip()
-            if len(line) > 3 and not line.isdigit():
-                # Check if this line contains a brand name
-                for brand in self.zimbabwe_brands:
-                    if brand in line.lower():
-                        return line.title()
+        # Final check for brand if title was found but brand wasn't
+        if extracted_title != "Unknown Product" and not extracted_brand:
+            for brand_keyword in self.zimbabwe_brands:
+                if brand_keyword in extracted_title.lower():
+                    extracted_brand = brand_keyword.title()
+                    break
         
-        # Look for product names in longer text segments
-        for line in text_lines:
-            line = line.strip()
-            # Look for lines that might be product names (contain letters, not just numbers/symbols)
-            if len(line) > 5 and any(c.isalpha() for c in line):
-                # Skip obvious non-product text
-                skip_words = ['ingredients', 'nutrition', 'www', 'http', 'ltd', 'company']
-                if not any(skip in line.lower() for skip in skip_words):
-                    return line.title()
-        
-        # Look for known Zimbabwe brands in descriptions
-        for desc in descriptions:
-            for brand in self.zimbabwe_brands:
-                if brand in desc.lower():
-                    # Try to get more specific product name
-                    brand_products = [d for d in descriptions if brand in d.lower()]
-                    if brand_products:
-                        # Return the most specific one
-                        return max(brand_products, key=len).title()
-        
-        # Look for beverage/food product indicators, but avoid generic terms
-        food_indicators = ['drink', 'beverage', 'food', 'snack', 'juice']  # Removed 'bottle', 'can', 'packet'
-        food_products = [d for d in descriptions if any(indicator in d.lower() for indicator in food_indicators)]
-        
-        if food_products:
-            # Return the most descriptive food product
-            return max(food_products, key=len).title()
-        
-        # Fallback: return the most descriptive label that's not too generic
-        generic_terms = ['bottle', 'plastic', 'container', 'package', 'product', 'item']
-        specific_descriptions = [d for d in descriptions if not any(generic in d.lower() for generic in generic_terms)]
-        
-        if specific_descriptions:
-            return max(specific_descriptions, key=len).title()
-        
-        # Last resort: extract meaningful words from text
-        words = text.split()
-        meaningful_words = []
-        for word in words:
-            word = word.strip('.,!?()[]{}')
-            if (len(word) > 3 and 
-                word.isalpha() and 
-                not word.lower() in ['the', 'and', 'for', 'with', 'from', 'this', 'that']):
-                meaningful_words.append(word)
-        
-        if meaningful_words:
-            # Return the first meaningful word, capitalized
-            return meaningful_words[0].title()
-        
-        return "Unknown Product"
+        return extracted_title, extracted_brand
     
     def _extract_size_and_unit(self, text: str) -> Tuple[str, str]:
         """Extract size and unit from text"""
@@ -461,8 +429,6 @@ class ProductVisionProcessor:
         # Ensure self.size_patterns is defined in __init__ if this is the first modification point for it
         # For this edit, assuming self.size_patterns exists and we are prepending to it.
         # If self.size_patterns was not previously defined, it should be initialized in __init__.
-        # For now, let's assume it exists and we are adding to it.
-        # To be safe, we can define it here if it might not exist, or ensure it's in __init__
         # For this specific request, we will just use the priority_patterns and then the existing ones.
 
         all_patterns = priority_patterns + getattr(self, 'size_patterns', [])

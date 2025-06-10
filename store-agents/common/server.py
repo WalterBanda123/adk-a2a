@@ -22,6 +22,13 @@ class AgentResponse(BaseModel):
     status: str = Field(default="success", description="Status of the response (success, error)")
     data: Dict[str, Any] = Field(default_factory=dict, description="Additional data returned by the agent")
     session_id: Optional[str] = Field(None, description="Session identifier for stateful interactions")
+
+
+class ImageAnalysisRequest(BaseModel):
+    message: str = Field(..., description="The message to process")
+    image_data: str = Field(..., description="Base64 encoded image data")
+    is_url: bool = Field(default=False, description="Whether image_data is a URL or base64 string")
+    user_id: str = Field(default="default_user", description="User identifier")
     
     
 def create_agent_server(
@@ -33,14 +40,25 @@ def create_agent_server(
 ) -> FastAPI:
     app = FastAPI(title=f"{name} Agent", description=description)
     
-    # Add CORS middleware
+    # Add CORS middleware - Updated for better frontend compatibility
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost:8100",
+            "http://localhost:3000",    # React default
+            "http://127.0.0.1:3000",
+            "http://localhost:3001", 
+            "http://127.0.0.1:3001",
+            "http://localhost:4200",    # Angular default
+            "http://127.0.0.1:4200",
+            "http://localhost:5173",    # Vite default
+            "http://127.0.0.1:5173",
+            "http://localhost:8080",    # Vue default
+            "http://127.0.0.1:8080",
+            "http://localhost:8100",    # Ionic default
             "http://127.0.0.1:8100",
             "https://localhost:8100",
-            "https://127.0.0.1:8100"
+            "https://127.0.0.1:8100",
+            "*"  # Allow all origins for development (remove in production)
         ],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -60,7 +78,7 @@ def create_agent_server(
     # Generate agent.json if it doesn't exist
     agent_json_path = os.path.join(well_known_path, "agent.json")
     if not os.path.exists(agent_json_path):
-        endpoint_names = ["run"]
+        endpoint_names = ["run", "analyze_image"]
         if endpoints:
             endpoint_names.extend(endpoints.keys())
         
@@ -92,6 +110,36 @@ def create_agent_server(
                 status="error",
                 data={"error_type": type(e).__name__},
                 session_id=request.session_id
+            )
+
+    @app.post("/analyze_image", response_model=AgentResponse)
+    async def analyze_image(request: ImageAnalysisRequest = Body(...)):
+        """
+        Dedicated endpoint for image analysis using direct vision processing
+        Bypasses agent system for reliable and fast image processing
+        """
+        try:
+            # Use the task_manager's direct vision processing capability
+            context = {
+                "user_id": request.user_id,
+                "image_data": request.image_data,
+                "is_url": request.is_url
+            }
+            
+            result = await task_manager.process_task(request.message, context, session_id=None)
+            
+            return AgentResponse(
+                message=result.get("message", "Image analysis completed"),
+                status=result.get("status", "success"),
+                data=result.get("data", {}),
+                session_id=None
+            )
+        except Exception as e:
+            return AgentResponse(
+                message=f"Error analyzing image: {str(e)}",
+                status="error",
+                data={"error_type": type(e).__name__},
+                session_id=None
             )
             
     @app.get("/.well-known/agent.json")

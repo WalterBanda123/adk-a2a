@@ -10,6 +10,8 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
 from google.genai import types as adk_types
 
+# Import the vision processor for direct image analysis
+from .tools.add_product_vision_tool import ProductVisionProcessor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,6 +29,9 @@ class TaskManager:
         #Initialise the ADK services
         self.session_service = InMemorySessionService()
         self.artifact_service = InMemoryArtifactService()
+        
+        # Initialize vision processor for direct image analysis
+        self.vision_processor = ProductVisionProcessor()
         
         #Create the runner
         self.runner = Runner(
@@ -49,43 +54,94 @@ class TaskManager:
         if not session:
             session = await self.session_service.create_session(app_name=APP_NAME, user_id=user_id, session_id=session_id, state={})
             logger.info(f"Created new session: {session_id}")
-            
     
-        # Check if there's image data in the context
+        # NEW APPROACH: Check for image data and process directly
         if "image_data" in context:
-            # Include image data information in the message for the agent
-            # Simplified image_info to be more concise
-            image_info = f"\n\n--- IMAGE DATA AVAILABLE ---\n"
-            image_info += f"Task: {message}\n"
-            image_info += f"To process this image, use the 'add_product_vision_tool' with these exact parameters:\n"
-            image_info += f"- image_data: [provided_image_data_base64_string_or_url]\n" # Placeholder, actual data is large
-            image_info += f"- is_url: {context.get('is_url', False)}\n"
-            image_info += f"- user_id: {user_id}\n"
-            # The full image_data is still passed in the tool call by the agent based on its instructions
-            # The agent will see the cue "IMAGE DATA AVAILABLE" and its instructions tell it to find the params.
-            # The task_manager passes the actual full image data in the context that the agent framework uses.
+            logger.info("🖼️ Image data detected - processing directly with vision API")
             
-            # Construct the message for the LLM. The critical part is the cue and the parameters structure.
-            # The actual base64 string will be retrieved by the agent from the context provided by the user message.
-            # We are just showing the agent *how* the parameters are named.
-            
-            # The agent's instructions in add_new_product_subagent.py tell it:
-            # "2. The user message will contain the necessary parameters for the tool: 'image_data', 'is_url', and 'user_id'. Extract these exact values from the user's message."
-            # So, the enhanced_message needs to *simulate* this user message structure for the agent.
-            
-            # This is the message the *agent* sees, simulating what a user might send if they were manually providing all details.
-            simulated_user_message_with_image_details = (
-                f"{message}\n\n"
-                f"IMAGE DATA AVAILABLE:\n"
-                f"- image_data: {context.get('image_data', '')}\n" # Actual data for the agent to parse
-                f"- is_url: {context.get('is_url', False)}\n"
-                f"- user_id: {user_id}"
-            )
-            enhanced_message = f"User ID: {user_id}\n\n{simulated_user_message_with_image_details}"
-
-        else:
-            enhanced_message = f"User ID: {user_id}\n\n{message}"
+            try:
+                # Extract image parameters
+                image_data = context.get("image_data", "")
+                is_url = context.get("is_url", False)
+                
+                if not image_data:
+                    return {
+                        "message": "Image data is required but not provided",
+                        "status": "error",
+                        "data": {}
+                    }
+                
+                # Process image directly using vision processor
+                vision_result = await self.vision_processor.process_image(image_data, is_url)
+                
+                if vision_result.get("success"):
+                    product_info = vision_result.get("product", {})
+                    
+                    # Create a concise summary message
+                    title = product_info.get("title", "Unknown Product")
+                    brand = product_info.get("brand", "")
+                    size = product_info.get("size", "")
+                    unit = product_info.get("unit", "")
+                    category = product_info.get("category", "")
+                    processing_time = product_info.get("processing_time", 0)
+                    
+                    # Build summary message
+                    summary_parts = [f"✅ Product identified: {title}"]
+                    if brand:
+                        summary_parts.append(f"Brand: {brand}")
+                    if size and unit:
+                        summary_parts.append(f"Size: {size}{unit}")
+                    if category:
+                        summary_parts.append(f"Category: {category}")
+                    summary_parts.append(f"Processing time: {processing_time:.2f}s")
+                    
+                    summary_message = " | ".join(summary_parts)
+                    
+                    # Structure the product data for response
+                    product_data = {
+                        "title": title,
+                        "brand": brand,
+                        "size": size,
+                        "unit": unit,
+                        "category": category,
+                        "subcategory": product_info.get("subcategory", ""),
+                        "description": product_info.get("description", ""),
+                        "confidence": product_info.get("confidence", 0.0),
+                        "processing_time": processing_time
+                    }
+                    
+                    logger.info(f"✅ Successfully processed image: {title}")
+                    
+                    return {
+                        "message": summary_message,
+                        "status": "success",
+                        "data": {
+                            "product": product_data,
+                            "processing_method": "direct_vision_api"
+                        }
+                    }
+                else:
+                    error_msg = vision_result.get("error", "Unknown vision processing error")
+                    logger.error(f"❌ Vision processing failed: {error_msg}")
+                    
+                    return {
+                        "message": f"Failed to analyze image: {error_msg}",
+                        "status": "error", 
+                        "data": {"error": error_msg}
+                    }
+                    
+            except Exception as e:
+                logger.error(f"❌ Error in direct image processing: {str(e)}")
+                return {
+                    "message": f"Image processing error: {str(e)}",
+                    "status": "error",
+                    "data": {"error": str(e)}
+                }
         
+        # FALLBACK: For non-image requests, use the original agent approach
+        logger.info("📝 Processing text-only request with agent")
+        
+        enhanced_message = f"User ID: {user_id}\n\n{message}"
         request_content = adk_types.Content(role="user", parts=[adk_types.Part(text=enhanced_message)])
         
         try:
@@ -95,91 +151,35 @@ class TaskManager:
                 new_message=request_content
             )
             
-            final_message="(No response generated)"
-            raw_events=[]
-            product_data = None
+            final_message = "(No response generated)"
+            raw_events = []
             
-            #Process responses
+            # Process responses from agent
             async for event in events:
                 event_data = event.model_dump(exclude_none=True)
                 raw_events.append(event_data)
                 
-                # Debug logging - print the full event structure when we see tool usage
-                if "add_product_vision_tool" in str(event_data):
-                    logger.info(f"🔍 FOUND VISION TOOL EVENT:")
-                    logger.info(f"Full event data: {event_data}")
-                
-                # Check for tool calls
-                # According to ADK structure, tool_calls are often found in event_data['actions']['tool_action']['tool_calls']
-                # or sometimes event_data['tool_calls'] directly in some event types.
-                current_tool_calls = None
-                if event_data.get('actions') and isinstance(event_data['actions'], dict):
-                    tool_action = event_data['actions'].get('tool_action')
-                    if tool_action and isinstance(tool_action, dict):
-                        current_tool_calls = tool_action.get('tool_calls')
-                
-                if current_tool_calls:
-                    logger.info(f"Found tool calls: {current_tool_calls}")
-                    # Iteration here might not be necessary if the response is always in a separate event.
-
-                # Check for tool responses
-                # Tool responses are in event_data['content']['parts'] when event_data['content']['role'] == 'tool'
-                current_content = event_data.get('content')
-                if current_content and isinstance(current_content, dict) and current_content.get('role') == 'tool':
-                    parts = current_content.get('parts')
-                    if parts and isinstance(parts, list):
-                        for part in parts:
-                            if isinstance(part, dict) and part.get('function_response'):
-                                fn_response_data = part['function_response']
-                                if isinstance(fn_response_data, dict):
-                                    logger.info(f"Found function response: {fn_response_data.get('name')} (ID: {fn_response_data.get('id')})")
-                                    if fn_response_data.get('name') == 'add_product_vision_tool':
-                                        try:
-                                            tool_result = fn_response_data.get('response')
-                                            logger.info(f"Tool result for add_product_vision_tool: {tool_result}")
-                                            if isinstance(tool_result, dict) and tool_result.get('success'):
-                                                product_data = {
-                                                    "title": tool_result.get('title', ''),
-                                                    "brand": tool_result.get('brand', ''),
-                                                    "size": tool_result.get('size', ''),
-                                                    "unit": tool_result.get('unit', ''),
-                                                    "category": tool_result.get('category', ''),
-                                                    "subcategory": tool_result.get('subcategory', ''),
-                                                    "description": tool_result.get('description', ''),
-                                                    "confidence": tool_result.get('confidence', 0.0),
-                                                    "processing_time": tool_result.get('processing_time', 0.0)
-                                                }
-                                                logger.info(f"Extracted product data: {product_data}")
-                                        except Exception as e:
-                                            logger.warning(f"Failed to extract product data from tool response: {e}")
-                
-                #Only extract from the final response
+                # Only extract from the final response
                 if event.is_final_response() and event.content and event.content.role == 'model':
                     if event.content and event.content.parts:
                         final_message = event.content.parts[0].text
                     logger.info(f"Final response: {final_message}")
                     
-            # Build response data
-            response_data = {
-                "raw_events": raw_events[-1] if raw_events else None # Keep last raw event for context if needed
-            }
-            
-            # Include product data if available, this will be the primary data source for product info
-            if product_data:
-                response_data["product"] = product_data
-                    
             return {
-                "message":final_message, # LLM's textual summary
-                "status":"success",
-                "data": response_data # Contains 'product' if tool ran, and 'raw_events'
+                "message": final_message,
+                "status": "success",
+                "data": {
+                    "raw_events": raw_events[-1] if raw_events else None,
+                    "processing_method": "agent_llm"
+                }
             }
             
         except Exception as e:
-            logger.error(f"Error processing task: {str(e)}")
+            logger.error(f"Error processing task with agent: {str(e)}")
             return {
-                "message":f"Error: {str(e)}",
-                "status":"error",
-                "data":{}  
+                "message": f"Error: {str(e)}",
+                "status": "error",
+                "data": {}
             }
 
 
