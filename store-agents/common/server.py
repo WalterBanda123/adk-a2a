@@ -21,7 +21,6 @@ class AgentResponse(BaseModel):
     message: str = Field(..., description="The response message")
     status: str = Field(default="success", description="Status of the response (success, error)")
     data: Dict[str, Any] = Field(default_factory=dict, description="Additional data returned by the agent")
-    pdf_data: Optional[Dict[str, Any]] = Field(None, description="PDF data for file downloads")
     session_id: Optional[str] = Field(None, description="Session identifier for stateful interactions")
     
     
@@ -84,7 +83,6 @@ def create_agent_server(
                 message=result.get("message", "Task completed"),
                 status="success",
                 data=result.get("data", {}),
-                pdf_data=result.get("pdf_data"),
                 session_id=request.session_id
             )
         except Exception as e:
@@ -93,7 +91,6 @@ def create_agent_server(
                 message=f"Error processing request: {str(e)}",
                 status="error",
                 data={"error_type": type(e).__name__},
-                pdf_data=None,
                 session_id=request.session_id
             )
             

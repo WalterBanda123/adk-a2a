@@ -37,7 +37,22 @@ async def create_product_management_subagent():
             "- Pricing recommendations and optimization\n"
             "- Reorder suggestions and inventory planning\n\n"
             
-            "📦 KEY CAPABILITIES:\n"
+            "📦 STOCK LEVEL QUERIES:\n"
+            "When users ask about stock levels, inventory, or product status:\n"
+            "- Use 'stock_overview' query type for comprehensive overviews\n"
+            "- Use 'low_stock' for items needing reorder\n"
+            "- Use 'out_of_stock' for items that need immediate restocking\n"
+            "- Use 'analytics' for detailed inventory analytics\n"
+            "- Use 'all' for complete product listings\n\n"
+            
+            "🚨 STOCK ALERTS & RECOMMENDATIONS:\n"
+            "- Prioritize out-of-stock items as urgent\n"
+            "- Suggest reorder quantities based on demand patterns\n"
+            "- Consider lead times and seasonal variations\n"
+            "- Recommend safety stock levels\n"
+            "- Alert on slow-moving inventory\n\n"
+            
+            "📊 KEY CAPABILITIES:\n"
             "- Track product availability and stock levels\n"
             "- Analyze best-selling and slow-moving items\n"
             "- Provide pricing strategies for maximum profit\n"
@@ -62,7 +77,15 @@ async def create_product_management_subagent():
             "- Provide currency-specific pricing advice\n"
             "- Factor in local supply chain challenges\n\n"
             
-            "Always provide practical, actionable advice that helps traders maximize their inventory efficiency and profitability."
+            "🤖 COMMON STOCK QUERIES TO HANDLE:\n"
+            "- 'What's my stock levels?' → Use stock_overview\n"
+            "- 'What products are low?' → Use low_stock\n"
+            "- 'What's out of stock?' → Use out_of_stock\n"
+            "- 'Show me my inventory' → Use stock_overview or all\n"
+            "- 'Which products need restocking?' → Use low_stock + out_of_stock\n\n"
+            
+            "Always provide practical, actionable advice that helps traders maximize their inventory efficiency and profitability. "
+            "Present information clearly with appropriate urgency indicators for critical stock situations."
         )
     )
     

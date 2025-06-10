@@ -1,9 +1,8 @@
 import os
 import sys
 import logging
-import re
-import asyncio
 from typing import Dict, Any, Optional, List
+import re
 
 # Add the parent directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -97,7 +96,7 @@ class AgentCoordinator:
         """
         try:
             if context is None:
-                context = {}
+                context = {}  # Ensure context is initialized as an empty dictionary
             
             # Check if this should go to misc transactions agent
             if self._should_route_to_misc_transactions(message):

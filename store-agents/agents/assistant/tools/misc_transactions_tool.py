@@ -153,8 +153,9 @@ def create_misc_transactions_tool():
                         for txn in transactions[:5]:  # Show first 5
                             date = txn.get('date', 'N/A')
                             amount = txn.get('amount', 0)
-                            desc = txn.get('purpose', txn.get('type', 'Unknown'))
-                            history_text += f"• {date}: ${amount:.2f} - {desc}\n"
+                            desc = txn.get('purpose', txn.get('source', txn.get('type', 'Unknown')))
+                            txn_type = txn.get('type', '').replace('_', ' ').title()
+                            history_text += f"• {date}: ${amount:.2f} - {txn_type} ({desc})\n"
                         return history_text
                     else:
                         return "📋 No transaction history found."

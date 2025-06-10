@@ -1,8 +1,0 @@
-/.venv
-/.vscode
-store-agents/.env
-**/.env
-**/__pycache__
-# Firebase service account keys (never commit these!)
-**/firebase-service-account-key.json
-**/*firebase*.json
