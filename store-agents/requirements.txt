@@ -1,6 +1,8 @@
 google-generativeai
 google-adk
+google-cloud-vision
 reportlab
 firebase-admin
 python-dotenv
 litellm
+requests
