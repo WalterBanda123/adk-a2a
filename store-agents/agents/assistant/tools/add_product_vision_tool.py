@@ -207,8 +207,14 @@ class ProductVisionProcessor:
             return []
             
         try:
-            # Use synchronous call - it's more reliable
-            response = self.client.label_detection(image=image)
+            # Use the proper Vision API method
+            if VISION_AVAILABLE and vision:
+                response = self.client.annotate_image({
+                    'image': image,
+                    'features': [{'type_': vision.Feature.Type.LABEL_DETECTION}]
+                })
+            else:
+                return []
             
             labels = []
             if response and hasattr(response, 'label_annotations'):
@@ -230,8 +236,14 @@ class ProductVisionProcessor:
             return []
             
         try:
-            # Use synchronous call - it's more reliable
-            response = self.client.text_detection(image=image)
+            # Use the proper Vision API method
+            if VISION_AVAILABLE and vision:
+                response = self.client.annotate_image({
+                    'image': image,
+                    'features': [{'type_': vision.Feature.Type.TEXT_DETECTION}]
+                })
+            else:
+                return []
             
             texts = []
             if response and hasattr(response, 'text_annotations'):
@@ -253,8 +265,14 @@ class ProductVisionProcessor:
             return []
             
         try:
-            # Use synchronous call - it's more reliable
-            response = self.client.web_detection(image=image)
+            # Use the proper Vision API method
+            if VISION_AVAILABLE and vision:
+                response = self.client.annotate_image({
+                    'image': image,
+                    'features': [{'type_': vision.Feature.Type.WEB_DETECTION}]
+                })
+            else:
+                return []
             
             entities = []
             if response and hasattr(response, 'web_detection') and response.web_detection.web_entities:
@@ -567,8 +585,54 @@ def create_add_product_vision_tool():
                     "error": "No image data provided"
                 }
             
-            # Process the image
-            result = await processor.process_image(image_data, is_url)
+            # Process the image based on processor type
+            if use_automl and hasattr(processor, 'process_product_image'):
+                # AutoML processor expects bytes, so we need to convert
+                try:
+                    if is_url:
+                        import requests
+                        response = requests.get(image_data, timeout=10)
+                        response.raise_for_status()
+                        image_bytes = response.content
+                    else:
+                        # Handle base64 data
+                        if image_data.startswith('data:image'):
+                            image_data = image_data.split(',', 1)[1]
+                        image_bytes = base64.b64decode(image_data)
+                    
+                    # Use AutoML processor's method
+                    automl_result = processor.process_product_image(image_bytes)  # type: ignore
+                    
+                    # Convert AutoML result to expected format
+                    result = {
+                        "success": True,
+                        "product": {
+                            "title": automl_result.get("product_name", "Unknown Product"),
+                            "brand": automl_result.get("brand", ""),
+                            "size": automl_result.get("size", ""),
+                            "unit": "",  # AutoML handles this differently
+                            "category": automl_result.get("category", "General"),
+                            "subcategory": "AutoML Detected",
+                            "description": f"{automl_result.get('brand', '')} {automl_result.get('product_name', '')}".strip(),
+                            "confidence": automl_result.get("overall_confidence", 0.5),
+                            "processing_time": 0.5,
+                            "detection_method": automl_result.get("processing_method", "automl")
+                        }
+                    }
+                except Exception as e:
+                    logger.warning(f"AutoML processing failed: {e}, falling back to basic processor")
+                    # Fall back to basic processor
+                    processor_fallback = ProductVisionProcessor()
+                    result = await processor_fallback.process_image(image_data, is_url)
+            elif hasattr(processor, 'process_image'):
+                # Use basic vision processor
+                result = await processor.process_image(image_data, is_url)  # type: ignore
+            else:
+                # Fallback error handling
+                result = {
+                    "success": False,
+                    "error": "No suitable processing method available"
+                }
             
             if result.get("success"):
                 product = result.get("product", {})

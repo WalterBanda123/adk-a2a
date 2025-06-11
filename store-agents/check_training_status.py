@@ -6,7 +6,7 @@ Monitor training progress and model deployment
 import json
 import time
 from google.cloud import automl
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 class AutoMLStatusChecker:
     """Check AutoML training and deployment status"""
@@ -53,7 +53,7 @@ class AutoMLStatusChecker:
             
             # Get operation
             operation = operations_client_v1.get_operation(
-                request={"name": operation_name}
+                name=operation_name
             )
             
             status_info = {

@@ -10,6 +10,7 @@ import logging
 import base64
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+from datetime import datetime
 import re
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -191,11 +192,11 @@ class TrainingDataCollector:
         logger.info(f"✅ Initialized training labels CSV: {self.labels_file}")
     
     def add_training_image(self, image_path: str, detected_text: str = "", 
-                          manual_override: Dict[str, str] = None) -> Dict[str, Any]:
+                          manual_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Add a new training image with pattern-based labeling"""
         
-        image_path = Path(image_path)
-        if not image_path.exists():
+        image_path_obj = Path(image_path)
+        if not image_path_obj.exists():
             return {"success": False, "error": f"Image not found: {image_path}"}
         
         # Extract information using patterns
@@ -203,7 +204,7 @@ class TrainingDataCollector:
             extracted_info = self.pattern_extractor.extract_pattern_based_info(detected_text)
         else:
             # If no text provided, try to extract from filename
-            filename_text = image_path.stem.replace('_', ' ').replace('-', ' ')
+            filename_text = image_path_obj.stem.replace('_', ' ').replace('-', ' ')
             extracted_info = self.pattern_extractor.extract_pattern_based_info(filename_text)
         
         # Apply manual overrides
@@ -212,14 +213,14 @@ class TrainingDataCollector:
         
         # Determine relative path for CSV
         try:
-            relative_path = image_path.relative_to(self.training_dir)
+            relative_path = image_path_obj.relative_to(self.training_dir)
         except ValueError:
-            relative_path = image_path
+            relative_path = image_path_obj
         
         # Add to CSV
         row_data = [
             str(relative_path),
-            image_path.name,
+            image_path_obj.name,
             extracted_info['brand'],
             extracted_info['product_name'],
             extracted_info['category'],
@@ -229,7 +230,7 @@ class TrainingDataCollector:
             extracted_info['variant'],
             extracted_info['confidence'],
             ';'.join(extracted_info['pattern_matches']),
-            str(pd.Timestamp.now().date()) if 'pd' in globals() else "2025-06-10",
+            str(datetime.now().date()),
             'no'  # needs verification
         ]
         

@@ -9,6 +9,7 @@ import json
 import csv
 import logging
 from pathlib import Path
+from typing import Dict, List, Any, Optional
 from google.cloud import storage
 from google.cloud import automl
 from datetime import datetime

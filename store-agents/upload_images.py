@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 BUCKET_NAME = "deve-01-automl-training"
 CATEGORIES = {
@@ -70,7 +71,7 @@ def upload_images(image_folder: str, category: str):
     print(f"\n🎉 Upload complete: {success_count}/{len(image_files)} files uploaded")
     return success_count > 0
 
-def list_bucket_contents(category: str = None):
+def list_bucket_contents(category: Optional[str] = None):
     """List contents of the bucket"""
     
     if category and category in CATEGORIES:

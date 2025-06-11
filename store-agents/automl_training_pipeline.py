@@ -100,7 +100,8 @@ class AutoMLTrainingPipeline:
                 model=model
             )
             
-            model_path = operation.name
+            # Get operation name safely
+            model_path = getattr(operation, 'name', str(operation))
             print(f"🚀 Training started!")
             print(f"📊 Model operation: {model_path}")
             

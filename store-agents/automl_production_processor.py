@@ -35,7 +35,7 @@ class AutoMLProductionProcessor:
             self.model_path = None
         
         # Initialize AutoML client
-        if self.model_available and AUTOML_AVAILABLE:
+        if self.model_available and AUTOML_AVAILABLE and automl is not None:
             self.prediction_client = automl.PredictionServiceClient()
         else:
             self.prediction_client = None
