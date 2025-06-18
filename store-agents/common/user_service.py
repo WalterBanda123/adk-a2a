@@ -69,6 +69,10 @@ class UserService:
             
             if profiles:
                 profile_data = profiles[0].to_dict()
+                if not profile_data:
+                    logger.warning(f"Profile document has no data for user_id: {user_id}")
+                    return None
+                    
                 logger.info(f"Retrieved user data from profiles collection for user_id: {user_id}")
                 user_data = {
                     "name": profile_data.get("name", f"User {user_id}"),
@@ -89,6 +93,10 @@ class UserService:
             
             if profile_doc.exists:
                 profile_data = profile_doc.to_dict()
+                if not profile_data:
+                    logger.warning(f"Profile document has no data for user_id: {user_id}")
+                    return None
+                    
                 logger.info(f"Retrieved user data from profiles document for user_id: {user_id}")
                 
                 user_data = {

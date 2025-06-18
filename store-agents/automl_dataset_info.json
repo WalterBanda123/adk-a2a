@@ -1,9 +1,0 @@
-{
-  "dataset_name": "zimbabwe_product_recognition",
-  "dataset_path": "projects/734962267457/locations/us-central1/datasets/IOD5674361257893822464",
-  "project_id": "deve-01",
-  "location": "us-central1",
-  "bucket_name": "deve-01-automl-training",
-  "created_date": "2025-06-10",
-  "status": "created"
-}
