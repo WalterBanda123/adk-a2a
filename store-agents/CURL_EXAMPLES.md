@@ -1,10 +1,12 @@
 # Product Transaction Agent - cURL Examples
 
 ## Server Information
+
 - **Base URL**: `http://localhost:8001`
 - **Port**: 8001 (different from main agent on 8000)
 
 ## 🚀 Start the Server
+
 ```bash
 ./start_product_transaction_agent.sh
 ```
@@ -12,6 +14,7 @@
 ## 📋 cURL Commands
 
 ### 1. Check Server Status
+
 ```bash
 curl -X GET "http://localhost:8001/.well-known/agent.json" \
   -H "Accept: application/json"
@@ -20,6 +23,7 @@ curl -X GET "http://localhost:8001/.well-known/agent.json" \
 ### 2. Product Registration via Image
 
 #### Upload Base64 Image
+
 ```bash
 curl -X POST "http://localhost:8001/register-product-image" \
   -H "Content-Type: application/json" \
@@ -32,12 +36,13 @@ curl -X POST "http://localhost:8001/register-product-image" \
 ```
 
 #### Upload Image from URL
+
 ```bash
 curl -X POST "http://localhost:8001/register-product-image" \
   -H "Content-Type: application/json" \
   -d '{
     "image_data": "https://example.com/product-image.jpg",
-    "user_id": "user123", 
+    "user_id": "user123",
     "is_url": true,
     "enhance_image": true
   }'
@@ -46,6 +51,7 @@ curl -X POST "http://localhost:8001/register-product-image" \
 ### 3. Chat-Based Transactions
 
 #### Simple Transaction
+
 ```bash
 curl -X POST "http://localhost:8001/chat/transaction" \
   -H "Content-Type: application/json" \
@@ -58,6 +64,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ```
 
 #### Complex Transaction
+
 ```bash
 curl -X POST "http://localhost:8001/chat/transaction" \
   -H "Content-Type: application/json" \
@@ -70,6 +77,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ```
 
 #### Transaction with Various Formats
+
 ```bash
 curl -X POST "http://localhost:8001/chat/transaction" \
   -H "Content-Type: application/json" \
@@ -82,6 +90,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ## 📝 Request Body Formats
 
 ### Product Registration Request
+
 ```json
 {
   "image_data": "base64_string_or_url",
@@ -92,6 +101,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ```
 
 ### Transaction Request
+
 ```json
 {
   "message": "quantity product @price, ...",
@@ -104,6 +114,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ## 📊 Expected Responses
 
 ### Product Registration Success
+
 ```json
 {
   "success": true,
@@ -116,7 +127,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
     "size": "2kg",
     "unit": "kg",
     "description": "",
-    "unit_price": 3.50,
+    "unit_price": 3.5,
     "stock_quantity": 25
   },
   "confidence": 0.92,
@@ -128,6 +139,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ```
 
 ### Transaction Success
+
 ```json
 {
   "success": true,
@@ -143,20 +155,20 @@ curl -X POST "http://localhost:8001/chat/transaction" \
         "name": "Bread",
         "quantity": 2,
         "unit_price": 1.25,
-        "line_total": 2.50,
+        "line_total": 2.5,
         "sku": "BRD001",
         "category": "Bakery"
       },
       {
         "name": "Milk",
         "quantity": 1,
-        "unit_price": 2.50,
-        "line_total": 2.50,
-        "sku": "MLK001", 
+        "unit_price": 2.5,
+        "line_total": 2.5,
+        "sku": "MLK001",
         "category": "Dairy"
       }
     ],
-    "subtotal": 5.00,
+    "subtotal": 5.0,
     "tax_rate": 0.05,
     "tax_amount": 0.25,
     "total": 5.25,
@@ -171,6 +183,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ## 🚨 Error Examples
 
 ### Invalid Product Registration
+
 ```bash
 curl -X POST "http://localhost:8001/register-product-image" \
   -H "Content-Type: application/json" \
@@ -181,6 +194,7 @@ curl -X POST "http://localhost:8001/register-product-image" \
 ```
 
 ### Invalid Transaction
+
 ```bash
 curl -X POST "http://localhost:8001/chat/transaction" \
   -H "Content-Type: application/json" \
@@ -193,6 +207,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ## 🔧 Testing Script
 
 Run the automated test suite:
+
 ```bash
 python test_product_transaction_agent.py
 ```
@@ -200,68 +215,70 @@ python test_product_transaction_agent.py
 ## 🌐 Frontend Integration
 
 ### JavaScript Fetch Example
+
 ```javascript
 // Product Registration
 const registerProduct = async (imageBase64, userId) => {
-  const response = await fetch('http://localhost:8001/register-product-image', {
-    method: 'POST',
+  const response = await fetch("http://localhost:8001/register-product-image", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       image_data: `data:image/jpeg;base64,${imageBase64}`,
       user_id: userId,
       is_url: false,
-      enhance_image: true
-    })
+      enhance_image: true,
+    }),
   });
-  
+
   return await response.json();
 };
 
 // Chat Transaction
 const processTransaction = async (message, userId, customerName = null) => {
-  const response = await fetch('http://localhost:8001/chat/transaction', {
-    method: 'POST',
+  const response = await fetch("http://localhost:8001/chat/transaction", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       message: message,
       user_id: userId,
       customer_name: customerName,
-      payment_method: 'cash'
-    })
+      payment_method: "cash",
+    }),
   });
-  
+
   return await response.json();
 };
 ```
 
 ### React Example
+
 ```jsx
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
 const ProductTransactionApp = () => {
-  const [transactionMessage, setTransactionMessage] = useState('');
+  const [transactionMessage, setTransactionMessage] = useState("");
   const [result, setResult] = useState(null);
 
   const handleTransaction = async () => {
     try {
-      const response = await fetch('http://localhost:8001/chat/transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:8001/chat/transaction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: transactionMessage,
-          user_id: 'user123',
-          customer_name: 'Customer'
-        })
+          user_id: "user123",
+          customer_name: "Customer",
+        }),
       });
-      
+
       const data = await response.json();
       setResult(data);
     } catch (error) {
-      console.error('Transaction failed:', error);
+      console.error("Transaction failed:", error);
     }
   };
 
@@ -274,7 +291,7 @@ const ProductTransactionApp = () => {
         placeholder="Enter transaction: 2 bread @1.25, 1 milk @2.50"
       />
       <button onClick={handleTransaction}>Process Transaction</button>
-      
+
       {result && (
         <div>
           <h3>Result:</h3>

@@ -1,12 +1,14 @@
 # Product Transaction Agent
 
 A FastAPI subagent that handles:
+
 1. **Image-Based Product Registration** via AutoML Vision
 2. **Chat-Based Transaction Processing** with natural language parsing
 
 ## 🚀 Quick Start
 
 ### Start the Server
+
 ```bash
 ./start_product_transaction_agent.sh
 ```
@@ -20,33 +22,35 @@ The server will be available at: `http://localhost:8001`
 Register a product by uploading an image. The system uses AutoML Vision to predict product details and optionally uploads the image to Google Cloud Storage.
 
 **Request Body:**
+
 ```json
 {
-    "image_data": "base64_encoded_image_or_url",
-    "user_id": "user123",
-    "is_url": false,
-    "enhance_image": true
+  "image_data": "base64_encoded_image_or_url",
+  "user_id": "user123",
+  "is_url": false,
+  "enhance_image": true
 }
 ```
 
 **Response:**
+
 ```json
 {
-    "success": true,
-    "message": "Product registered successfully: Hullets Brown Sugar",
-    "product": {
-        "title": "Hullets Brown Sugar",
-        "brand": "Hullets",
-        "category": "Staples",
-        "size": "2kg",
-        "unit_price": 3.50,
-        "stock_quantity": 25
-    },
-    "confidence": 0.92,
-    "image_url": "https://storage.googleapis.com/...",
-    "sku": "HULBROW2K",
-    "processing_time": 1.23,
-    "detection_method": "automl"
+  "success": true,
+  "message": "Product registered successfully: Hullets Brown Sugar",
+  "product": {
+    "title": "Hullets Brown Sugar",
+    "brand": "Hullets",
+    "category": "Staples",
+    "size": "2kg",
+    "unit_price": 3.5,
+    "stock_quantity": 25
+  },
+  "confidence": 0.92,
+  "image_url": "https://storage.googleapis.com/...",
+  "sku": "HULBROW2K",
+  "processing_time": 1.23,
+  "detection_method": "automl"
 }
 ```
 
@@ -55,50 +59,53 @@ Register a product by uploading an image. The system uses AutoML Vision to predi
 Process a transaction using natural language. Parse items, validate inventory, compute totals with tax, and update stock.
 
 **Request Body:**
+
 ```json
 {
-    "message": "2 maputi @0.5, 1 soap @1.2, 3x bread @1.25",
-    "user_id": "user123",
-    "customer_name": "John Doe",
-    "payment_method": "cash"
+  "message": "2 maputi @0.5, 1 soap @1.2, 3x bread @1.25",
+  "user_id": "user123",
+  "customer_name": "John Doe",
+  "payment_method": "cash"
 }
 ```
 
 **Response:**
+
 ```json
 {
-    "success": true,
-    "message": "Transaction processed successfully",
-    "receipt": {
-        "transaction_id": "TXN_user123_1625098765",
-        "user_id": "user123",
-        "customer_name": "John Doe", 
-        "date": "2025-06-11",
-        "time": "10:30:15",
-        "items": [
-            {
-                "name": "Maputi",
-                "quantity": 2,
-                "unit_price": 0.5,
-                "line_total": 1.0,
-                "sku": "MAP001",
-                "category": "Snacks"
-            }
-        ],
-        "subtotal": 6.95,
-        "tax_rate": 0.05,
-        "tax_amount": 0.35,
-        "total": 7.30,
-        "payment_method": "cash"
-    },
-    "chat_response": "🧾 **Transaction Complete!**\n\n**Receipt ID:** TXN_user123_1625098765...",
-    "warnings": ["Price adjusted for soap: $1.20 → $1.15"]
+  "success": true,
+  "message": "Transaction processed successfully",
+  "receipt": {
+    "transaction_id": "TXN_user123_1625098765",
+    "user_id": "user123",
+    "customer_name": "John Doe",
+    "date": "2025-06-11",
+    "time": "10:30:15",
+    "items": [
+      {
+        "name": "Maputi",
+        "quantity": 2,
+        "unit_price": 0.5,
+        "line_total": 1.0,
+        "sku": "MAP001",
+        "category": "Snacks"
+      }
+    ],
+    "subtotal": 6.95,
+    "tax_rate": 0.05,
+    "tax_amount": 0.35,
+    "total": 7.3,
+    "payment_method": "cash"
+  },
+  "chat_response": "🧾 **Transaction Complete!**\n\n**Receipt ID:** TXN_user123_1625098765...",
+  "warnings": ["Price adjusted for soap: $1.20 → $1.15"]
 }
 ```
 
 ## 📋 cURL Examples
 
 ### Product Registration
+
 ```bash
 curl -X POST "http://localhost:8001/register-product-image" \
   -H "Content-Type: application/json" \
@@ -111,6 +118,7 @@ curl -X POST "http://localhost:8001/register-product-image" \
 ```
 
 ### Chat Transaction
+
 ```bash
 curl -X POST "http://localhost:8001/chat/transaction" \
   -H "Content-Type: application/json" \
@@ -123,6 +131,7 @@ curl -X POST "http://localhost:8001/chat/transaction" \
 ```
 
 ### Check Server Status
+
 ```bash
 curl -X GET "http://localhost:8001/.well-known/agent.json"
 ```
@@ -130,10 +139,12 @@ curl -X GET "http://localhost:8001/.well-known/agent.json"
 ## 🔧 Configuration
 
 ### Environment Variables
+
 - `GOOGLE_APPLICATION_CREDENTIALS`: Path to Firebase service account key
 - `FIREBASE_PROJECT_ID`: Firebase project ID (default: "deve-01")
 
 ### Dependencies
+
 - FastAPI
 - Pydantic
 - Google Cloud AutoML
@@ -144,6 +155,7 @@ curl -X GET "http://localhost:8001/.well-known/agent.json"
 ## 🎯 Features
 
 ### Image Registration
+
 - **AutoML Integration**: Uses trained AutoML Vision models for product recognition
 - **Fallback Detection**: Falls back to Google Vision API if AutoML fails
 - **SKU Generation**: Automatically generates SKUs from detected product info
@@ -151,6 +163,7 @@ curl -X GET "http://localhost:8001/.well-known/agent.json"
 - **Metadata Lookup**: Fetches canonical product data from Firestore
 
 ### Transaction Processing
+
 - **Natural Language Parsing**: Supports various input formats:
   - `"2 maputi @0.5"`
   - `"1 soap @ 1.2"`
@@ -162,6 +175,7 @@ curl -X GET "http://localhost:8001/.well-known/agent.json"
 - **Receipt Generation**: Creates detailed receipts with transaction IDs
 
 ### Error Handling
+
 - **Validation Errors**: Clear messages for invalid input
 - **Stock Shortages**: Prevents overselling with detailed error messages
 - **Fallback Processing**: Graceful degradation when services are unavailable
@@ -196,6 +210,7 @@ JSON Response
 ## 🧪 Testing
 
 ### Test Product Registration
+
 ```python
 import requests
 import base64
@@ -215,6 +230,7 @@ print(response.json())
 ```
 
 ### Test Transaction Processing
+
 ```python
 import requests
 
@@ -237,11 +253,13 @@ print(response.json())
 ## 📊 Monitoring
 
 Check server health:
+
 ```bash
 curl http://localhost:8001/.well-known/agent.json
 ```
 
 View logs:
+
 ```bash
 tail -f product_transaction_agent.log
 ```
@@ -264,6 +282,7 @@ tail -f product_transaction_agent.log
 ## 🤝 Integration
 
 This agent integrates seamlessly with:
+
 - Existing Firebase/Firestore databases
 - Google Cloud AutoML models
 - Store management systems

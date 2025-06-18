@@ -172,8 +172,12 @@ class ProductTransactionHelper:
             
             # Text detection
             try:
-                text_response = self.vision_client.text_detection(image=image)
-                texts = text_response.text_annotations
+                # Using the correct Google Vision API method
+                response = self.vision_client.annotate_image({
+                    'image': image,
+                    'features': [{'type_': vision.Feature.Type.TEXT_DETECTION}]
+                })
+                texts = response.text_annotations if hasattr(response, 'text_annotations') and response.text_annotations else []
             except Exception as e:
                 logger.warning(f"Text detection failed: {e}")
                 texts = []
@@ -308,86 +312,78 @@ class ProductTransactionHelper:
     # =====================
 
     async def parse_cart_message(self, message: str) -> Dict[str, Any]:
-        """Parse free-form transaction message into structured items - supports both simple and @ format"""
+        """Parse free-form transaction message into structured items with enhanced NLP"""
         try:
             items = []
             total_items = 0
             estimated_total = 0.0
             
-            # Enhanced patterns for parsing transactions
-            # New: Simple format "2 bread, 1 maheu" - prices fetched from database
-            # Original: With prices "2 bread @1.50, 1 maheu @0.75"
+            logger.info(f"Parsing transaction message: '{message}'")
             
-            # Patterns for parsing (in order of preference)
-            patterns = [
-                # With prices (original format)
-                r'(\d+)\s*x?\s*([^@,]+)@\s*(\d+(?:\.\d+)?)',  # "2 bread @1.25" or "2x bread @1.25"
-                r'(\d+)\s+([^@,]+)\s+@\s*(\d+(?:\.\d+)?)',    # "2 bread @ 1.25"
-                r'(\d+)\s*([^@,]+)@(\d+(?:\.\d+)?)',          # "2bread@1.25"
-                
-                # Simple format (no prices - fetch from database)
-                r'(\d+)\s*x?\s*([^,@]+)',                     # "2 bread" or "2x bread"
-                r'(\d+)\s+([^,@]+)',                          # "2 bread"
+            # Clean and normalize the message
+            message_cleaned = self._clean_transaction_message(message)
+            
+            # Try multiple parsing strategies
+            parsing_strategies = [
+                self._parse_structured_format,    # "2 bread @1.50, 1 milk @0.75"
+                self._parse_simple_format,        # "2 bread, 1 milk"
+                self._parse_natural_language,     # "sold 2 apples by 3 dollars each"
+                self._parse_conversational,       # "I sold some bread and milk today"
             ]
             
-            # Clean the message
-            message = message.strip().replace('\n', ', ')
+            parsed_items = []
+            best_confidence = 0.0
             
-            # Split by commas and process each item
-            raw_items = [item.strip() for item in message.split(',') if item.strip()]
+            for strategy in parsing_strategies:
+                try:
+                    result = strategy(message_cleaned)
+                    if result.get("items") and result.get("confidence", 0) > best_confidence:
+                        parsed_items = result["items"]
+                        best_confidence = result["confidence"]
+                        logger.info(f"Best parsing strategy found {len(parsed_items)} items with confidence {best_confidence}")
+                        if best_confidence > 0.8:  # High confidence, use this result
+                            break
+                except Exception as e:
+                    logger.warning(f"Parsing strategy failed: {e}")
+                    continue
             
-            for raw_item in raw_items:
-                parsed_item = None
-                
-                for pattern in patterns:
-                    match = re.search(pattern, raw_item, re.IGNORECASE)
-                    if match:
-                        quantity = int(match.group(1))
-                        name = match.group(2).strip()
-                        
-                        # Check if price was provided
-                        if len(match.groups()) >= 3 and match.group(3):
-                            # Price provided - use it
-                            unit_price = float(match.group(3))
-                            line_total = quantity * unit_price
-                            
-                            parsed_item = {
-                                "name": name,
-                                "quantity": quantity,
-                                "unit_price": unit_price,
-                                "line_total": line_total,
-                                "raw_text": raw_item,
-                                "price_source": "provided"
-                            }
-                        else:
-                            # No price - will fetch from database
-                            parsed_item = {
-                                "name": name,
-                                "quantity": quantity,
-                                "unit_price": None,  # To be fetched from database
-                                "line_total": None,  # To be calculated after price lookup
-                                "raw_text": raw_item,
-                                "price_source": "database"
-                            }
-                        break
-                
-                if parsed_item:
-                    items.append(parsed_item)
-                    total_items += parsed_item["quantity"]
-                    if parsed_item["line_total"]:
-                        estimated_total += parsed_item["line_total"]
-                else:
-                    logger.warning(f"Could not parse item: {raw_item}")
+            # If no items found, try fallback parsing
+            if not parsed_items:
+                logger.warning("All parsing strategies failed, trying fallback")
+                parsed_items = self._fallback_parsing(message_cleaned)
             
-            return {
-                "success": True,
+            # Process the parsed items
+            for item in parsed_items:
+                if item and item.get("name") and item.get("quantity"):
+                    items.append(item)
+                    total_items += item["quantity"]
+                    if item.get("line_total"):
+                        estimated_total += item["line_total"]
+            
+            success = len(items) > 0
+            confidence = best_confidence if success else 0.0
+            
+            result = {
+                "success": success,
                 "items": items,
                 "total_items": total_items,
                 "estimated_total": estimated_total,
-                "parsing_confidence": len(items) / len(raw_items) if raw_items else 0.0,
+                "parsing_confidence": confidence,
                 "raw_text": message,
-                "needs_price_lookup": any(item["unit_price"] is None for item in items)
+                "needs_price_lookup": any(item.get("unit_price") is None for item in items),
+                "parsing_method": "enhanced_nlp"
             }
+            
+            if not success:
+                result["error"] = f"Could not extract any products from message: '{message}'"
+                result["suggestions"] = [
+                    "Try formats like: '2 bread, 1 milk' or '2 bread @1.50, 1 milk @0.75'",
+                    "Include quantity and product name: 'sold 3 apples'",
+                    "List items separated by commas: 'bread, milk, eggs'"
+                ]
+            
+            logger.info(f"Final parsing result: {len(items)} items, confidence: {confidence}")
+            return result
             
         except Exception as e:
             logger.error(f"Error parsing cart message: {e}")
@@ -400,9 +396,241 @@ class ProductTransactionHelper:
                 "parsing_confidence": 0.0,
                 "raw_text": message
             }
+    
+    def _clean_transaction_message(self, message: str) -> str:
+        """Clean and normalize the transaction message"""
+        # Remove extra whitespace and newlines
+        cleaned = message.strip().replace('\n', ' ')
+        
+        # Normalize common variations
+        replacements = {
+            ' by ': ' @ ',  # "apples by 3" -> "apples @ 3"
+            ' for ': ' @ ', # "apples for 3" -> "apples @ 3"
+            ' at ': ' @ ',  # "apples at 3" -> "apples @ 3"
+            ' each': '',    # Remove "each"
+            'sold ': '',    # Remove "sold"
+            'bought ': '',  # Remove "bought"
+            'purchase ': '',# Remove "purchase"
+        }
+        
+        for old, new in replacements.items():
+            cleaned = cleaned.replace(old, new)
+        
+        return cleaned
+    
+    def _parse_structured_format(self, message: str) -> Dict[str, Any]:
+        """Parse structured format: '2 bread @1.50, 1 milk @0.75'"""
+        import re
+        
+        items = []
+        
+        # Enhanced patterns for parsing (in order of preference)
+        patterns = [
+            r'(\d+)\s*x?\s*([^@,]+?)@\s*(\d+(?:\.\d+)?)',  # "2 bread @1.25" or "2x bread @1.25"
+            r'(\d+)\s+([^@,]+?)\s+@\s*(\d+(?:\.\d+)?)',    # "2 bread @ 1.25"
+            r'(\d+)\s*([^@,]+?)@(\d+(?:\.\d+)?)',          # "2bread@1.25"
+        ]
+        
+        # Split by commas and process each item
+        raw_items = [item.strip() for item in message.split(',') if item.strip()]
+        parsed_count = 0
+        
+        for raw_item in raw_items:
+            for pattern in patterns:
+                match = re.search(pattern, raw_item, re.IGNORECASE)
+                if match:
+                    try:
+                        quantity = int(match.group(1))
+                        name = match.group(2).strip()
+                        unit_price = float(match.group(3))
+                        line_total = quantity * unit_price
+                        
+                        items.append({
+                            "name": name,
+                            "quantity": quantity,
+                            "unit_price": unit_price,
+                            "line_total": line_total,
+                            "raw_text": raw_item,
+                            "price_source": "provided"
+                        })
+                        parsed_count += 1
+                        break
+                    except (ValueError, IndexError):
+                        continue
+        
+        confidence = parsed_count / len(raw_items) if raw_items else 0.0
+        return {"items": items, "confidence": confidence}
+    
+    def _parse_simple_format(self, message: str) -> Dict[str, Any]:
+        """Parse simple format: '2 bread, 1 milk'"""
+        import re
+        
+        items = []
+        
+        # Patterns for simple format (no prices)
+        patterns = [
+            r'(\d+)\s*x?\s*([^,@]+)',  # "2 bread" or "2x bread"
+            r'(\d+)\s+([^,@]+)',       # "2 bread"
+        ]
+        
+        # Split by commas and process each item
+        raw_items = [item.strip() for item in message.split(',') if item.strip()]
+        parsed_count = 0
+        
+        for raw_item in raw_items:
+            for pattern in patterns:
+                match = re.search(pattern, raw_item, re.IGNORECASE)
+                if match:
+                    try:
+                        quantity = int(match.group(1))
+                        name = match.group(2).strip()
+                        
+                        items.append({
+                            "name": name,
+                            "quantity": quantity,
+                            "unit_price": None,  # To be fetched from database
+                            "line_total": None,  # To be calculated after price lookup
+                            "raw_text": raw_item,
+                            "price_source": "database"
+                        })
+                        parsed_count += 1
+                        break
+                    except (ValueError, IndexError):
+                        continue
+        
+        confidence = parsed_count / len(raw_items) if raw_items else 0.0
+        return {"items": items, "confidence": confidence}
+    
+    def _parse_natural_language(self, message: str) -> Dict[str, Any]:
+        """Parse natural language: 'sold 2 apples by 3 dollars each'"""
+        import re
+        
+        items = []
+        
+        # Natural language patterns
+        patterns = [
+            r'(\d+)\s+(\w+(?:\s+\w+)?)\s+@\s*(\d+(?:\.\d+)?)',  # "2 apples @ 3.50"
+            r'(\d+)\s+(\w+(?:\s+\w+)?)\s+(?:by|for|at)\s+(\d+(?:\.\d+)?)',  # "2 apples by 3.50"
+            r'(\d+)\s+(\w+(?:\s+\w+)?)',  # "2 apples" (no price)
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, message, re.IGNORECASE)
+            for match in matches:
+                try:
+                    quantity = int(match.group(1))
+                    name = match.group(2).strip()
+                    
+                    # Check if price was captured
+                    if len(match.groups()) >= 3 and match.group(3):
+                        unit_price = float(match.group(3))
+                        line_total = quantity * unit_price
+                        price_source = "provided"
+                    else:
+                        unit_price = None
+                        line_total = None
+                        price_source = "database"
+                    
+                    items.append({
+                        "name": name,
+                        "quantity": quantity,
+                        "unit_price": unit_price,
+                        "line_total": line_total,
+                        "raw_text": match.group(0),
+                        "price_source": price_source
+                    })
+                except (ValueError, IndexError):
+                    continue
+        
+        confidence = 0.7 if items else 0.0
+        return {"items": items, "confidence": confidence}
+    
+    def _parse_conversational(self, message: str) -> Dict[str, Any]:
+        """Parse conversational format: 'I sold some bread and milk today'"""
+        import re
+        
+        items = []
+        
+        # Look for product mentions without explicit quantities
+        product_keywords = [
+            'bread', 'milk', 'eggs', 'rice', 'sugar', 'oil', 'tea', 'coffee',
+            'apple', 'apples', 'banana', 'bananas', 'orange', 'oranges',
+            'tomato', 'tomatoes', 'onion', 'onions', 'potato', 'potatoes',
+            'soap', 'salt', 'flour', 'mealie', 'maize'
+        ]
+        
+        # Extract quantity if present, otherwise assume 1
+        quantity_pattern = r'(\d+)\s+(\w+)'
+        matches = re.finditer(quantity_pattern, message, re.IGNORECASE)
+        
+        found_items = []
+        for match in matches:
+            try:
+                quantity = int(match.group(1))
+                potential_product = match.group(2).lower();
+                
+                if potential_product in product_keywords:
+                    found_items.append({
+                        "name": potential_product,
+                        "quantity": quantity,
+                        "unit_price": None,
+                        "line_total": None,
+                        "raw_text": match.group(0),
+                        "price_source": "database"
+                    })
+            except (ValueError, IndexError):
+                continue
+        
+        # If no quantities found, look for product names and assume quantity 1
+        if not found_items:
+            for keyword in product_keywords:
+                if keyword in message.lower():
+                    found_items.append({
+                        "name": keyword,
+                        "quantity": 1,
+                        "unit_price": None,
+                        "line_total": None,
+                        "raw_text": keyword,
+                        "price_source": "database"
+                    })
+        
+        confidence = 0.5 if found_items else 0.0
+        return {"items": found_items, "confidence": confidence}
+    
+    def _fallback_parsing(self, message: str) -> List[Dict[str, Any]]:
+        """Fallback parsing when all other methods fail"""
+        # Extract any numbers and words, make best guesses
+        import re
+        
+        # Look for any number followed by a word
+        pattern = r'(\d+)\s*(\w+(?:\s+\w+)?)'
+        matches = re.finditer(pattern, message, re.IGNORECASE)
+        
+        items = []
+        for match in matches:
+            try:
+                quantity = int(match.group(1))
+                name = match.group(2).strip()
+                
+                # Skip if the "name" looks like a price or irrelevant word
+                if name.lower() in ['dollars', 'usd', 'cents', 'price', 'total', 'each']:
+                    continue
+                
+                items.append({
+                    "name": name,
+                    "quantity": quantity,
+                    "unit_price": None,
+                    "line_total": None,
+                    "raw_text": match.group(0),
+                    "price_source": "database"
+                })
+            except (ValueError, IndexError):
+                continue
+        
+        return items
 
     async def lookup_product_by_name(self, name: str, user_id: str) -> Optional[Dict[str, Any]]:
-        """Look up product by name with fuzzy matching"""
+        """Look up product by name with enhanced fuzzy matching"""
         try:
             if not self.product_service.db:
                 return None
@@ -412,43 +640,162 @@ class ProductTransactionHelper:
             if not products:
                 return None
             
-            # Simple fuzzy matching
-            name_lower = name.lower().strip()
+            # Clean and normalize the input name
+            name_cleaned = self._normalize_product_name(name)
             best_match = None
             best_score = 0.0
             
             for product in products:
-                product_name = product.get('product_name', '').lower()
+                product_name_cleaned = self._normalize_product_name(product.get('product_name', ''))
                 
-                # Exact match
-                if name_lower == product_name:
-                    return product
+                # Multiple matching strategies
+                score = self._calculate_product_match_score(name_cleaned, product_name_cleaned, name, product.get('product_name', ''))
                 
-                # Partial match scoring
-                score = 0.0
-                if name_lower in product_name:
-                    score = len(name_lower) / len(product_name)
-                elif product_name in name_lower:
-                    score = len(product_name) / len(name_lower)
-                else:
-                    # Word overlap scoring
-                    name_words = set(name_lower.split())
-                    product_words = set(product_name.split())
-                    overlap = len(name_words.intersection(product_words))
-                    total_words = len(name_words.union(product_words))
-                    score = overlap / total_words if total_words > 0 else 0.0
-                
-                if score > best_score and score > 0.3:  # Minimum threshold
+                if score > best_score and score > 0.4:  # Increased threshold for better matches
                     best_score = score
                     best_match = product
             
+            if best_match:
+                logger.info(f"Found product match: '{name}' -> '{best_match.get('product_name')}' (score: {best_score:.2f})")
+            else:
+                logger.warning(f"No product match found for: '{name}' (tried {len(products)} products)")
+                
             return best_match
             
         except Exception as e:
             logger.error(f"Error looking up product by name {name}: {e}")
             return None
 
-    async def compute_receipt(self, parsed_items: List[Dict], user_id: str, store_id: str = None, customer_name: Optional[str] = None) -> Dict[str, Any]:
+    def _normalize_product_name(self, name: str) -> str:
+        """Normalize product name for better matching"""
+        if not name:
+            return ""
+            
+        # Convert to lowercase and strip
+        normalized = name.lower().strip()
+        
+        # Remove common product descriptors that might vary
+        descriptors_to_remove = [
+            r'\(\d+[a-z]*\)',  # Remove size indicators like (2kg), (500ml)
+            r'\d+[a-z]*\s*pack',  # Remove pack indicators
+            r'\d+[a-z]*\s*bottle',  # Remove bottle size
+            r'\d+[a-z]*\s*can',  # Remove can size
+        ]
+        
+        for pattern in descriptors_to_remove:
+            import re
+            normalized = re.sub(pattern, '', normalized).strip()
+        
+        # Handle common plural/singular variations
+        singular_to_plural = {
+            'apple': 'apples', 'banana': 'bananas', 'orange': 'oranges',
+            'tomato': 'tomatoes', 'potato': 'potatoes', 'onion': 'onions',
+            'bread': 'breads', 'milk': 'milks', 'egg': 'eggs',
+        }
+        
+        # Check if we can standardize to singular form
+        for singular, plural in singular_to_plural.items():
+            if normalized.endswith(plural):
+                normalized = normalized.replace(plural, singular)
+            elif normalized.endswith(singular):
+                # Already singular, keep as is
+                pass
+        
+        return normalized
+    
+    def _calculate_product_match_score(self, name_cleaned: str, product_name_cleaned: str, 
+                                     original_name: str, original_product_name: str) -> float:
+        """Calculate comprehensive matching score between product names"""
+        scores = []
+        
+        # 1. Exact match (highest priority)
+        if name_cleaned == product_name_cleaned:
+            return 1.0
+        
+        # 2. Exact substring match
+        if name_cleaned in product_name_cleaned:
+            scores.append(len(name_cleaned) / len(product_name_cleaned))
+        elif product_name_cleaned in name_cleaned:
+            scores.append(len(product_name_cleaned) / len(name_cleaned))
+        
+        # 3. Word overlap scoring
+        name_words = set(name_cleaned.split())
+        product_words = set(product_name_cleaned.split())
+        if name_words and product_words:
+            overlap = len(name_words.intersection(product_words))
+            total_words = len(name_words.union(product_words))
+            if total_words > 0:
+                scores.append(overlap / total_words)
+        
+        # 4. Fuzzy string similarity (using simple char-based similarity)
+        scores.append(self._string_similarity(name_cleaned, product_name_cleaned))
+        
+        # 5. Check for common variations (apple -> apples, etc.)
+        variation_score = self._check_variations(name_cleaned, product_name_cleaned)
+        if variation_score > 0:
+            scores.append(variation_score)
+        
+        # 6. Brand name matching
+        brand_score = self._check_brand_match(original_name, original_product_name)
+        if brand_score > 0:
+            scores.append(brand_score * 0.5)  # Weight brand matches lower
+        
+        # Return the highest score
+        return max(scores) if scores else 0.0
+    
+    def _string_similarity(self, s1: str, s2: str) -> float:
+        """Calculate string similarity using character-based approach"""
+        if not s1 or not s2:
+            return 0.0
+        
+        # Simple character overlap approach
+        s1_chars = set(s1)
+        s2_chars = set(s2)
+        overlap = len(s1_chars.intersection(s2_chars))
+        total = len(s1_chars.union(s2_chars))
+        
+        return overlap / total if total > 0 else 0.0
+    
+    def _check_variations(self, name1: str, name2: str) -> float:
+        """Check for common product name variations"""
+        variations = [
+            # Singular/plural pairs
+            ('apple', 'apples'), ('banana', 'bananas'), ('orange', 'oranges'),
+            ('tomato', 'tomatoes'), ('potato', 'potatoes'), ('onion', 'onions'),
+            ('bread', 'breads'), ('milk', 'milks'), ('egg', 'eggs'),
+            ('rice', 'rices'), ('sugar', 'sugars'), ('salt', 'salts'),
+            ('oil', 'oils'), ('soap', 'soaps'), ('tea', 'teas'),
+            
+            # Common abbreviations
+            ('coke', 'coca cola'), ('pepsi', 'pepsi cola'),
+            ('mayo', 'mayonnaise'), ('ketchup', 'tomato sauce'),
+        ]
+        
+        for var1, var2 in variations:
+            if (name1 == var1 and var2 in name2) or (name1 == var2 and var1 in name2):
+                return 0.9
+            if (name2 == var1 and var1 in name1) or (name2 == var2 and var2 in name1):
+                return 0.9
+        
+        return 0.0
+    
+    def _check_brand_match(self, name1: str, name2: str) -> float:
+        """Check if brand names match"""
+        common_brands = [
+            'coca cola', 'pepsi', 'fanta', 'sprite', 'nestle', 'unilever',
+            'lobels', 'bakers inn', 'dairibord', 'olivine', 'mazoe'
+        ]
+        
+        name1_lower = name1.lower()
+        name2_lower = name2.lower()
+        
+        for brand in common_brands:
+            if brand in name1_lower and brand in name2_lower:
+                return 0.8
+        
+        return 0.0
+
+    async def compute_receipt(self, parsed_items: List[Dict], user_id: str, store_id: Optional[str] = None, customer_name: Optional[str] = None) -> Dict[str, Any]:
         """Compute final receipt with tax and validate stock"""
         try:
             validated_items = []
@@ -460,15 +807,35 @@ class ProductTransactionHelper:
             if not store_id:
                 store_id = f"store_{user_id}"
             
+            # Check if we have any items to process
+            if not parsed_items:
+                return {
+                    "success": False,
+                    "errors": ["No items were found in your message. Please specify what you want to buy/sell with quantities (e.g., '2 bread, 1 milk' or '2 apples @3.50')"],
+                    "warnings": [],
+                    "receipt": None
+                }
+            
+            logger.info(f"Processing {len(parsed_items)} items for user {user_id}")
+            
             for item in parsed_items:
-                # Look up product in inventory
-                product = await self.lookup_product_by_name(item["name"], user_id)
+                item_name = item.get("name", "").strip()
+                if not item_name:
+                    errors.append("Found an item without a name - please specify the product name")
+                    continue
+                
+                logger.info(f"Looking up product: '{item_name}'")
+                
+                # Look up product in inventory with enhanced fuzzy matching
+                product = await self.lookup_product_by_name(item_name, user_id)
                 
                 if product:
                     # Product found in database
                     available_stock = product.get('stock_quantity', 0)
                     requested_qty = item["quantity"]
                     database_price = product.get('unit_price', 0)
+                    
+                    logger.info(f"Found product '{product.get('product_name')}' - stock: {available_stock}, price: ${database_price}")
                     
                     # Use database price if no price was provided, otherwise compare prices
                     if item.get("price_source") == "database" or item["unit_price"] is None:
@@ -502,22 +869,32 @@ class ProductTransactionHelper:
                         
                         validated_items.append(validated_item)
                         subtotal += line_total
+                        logger.info(f"Added item: {validated_item['name']} x{requested_qty} @ ${final_price:.2f}")
                         
                     else:
-                        errors.append(f"Insufficient stock for {item['name']}: requested {requested_qty}, available {available_stock}")
+                        errors.append(f"Insufficient stock for {product.get('product_name', item['name'])}: requested {requested_qty}, available {available_stock}")
                         
                 else:
-                    # Product not found in database
+                    # Product not found in database - provide helpful suggestions
+                    logger.warning(f"Product '{item_name}' not found in inventory")
+                    
+                    # Get available products to suggest alternatives
+                    suggestions = await self._get_product_suggestions(item_name, user_id)
+                    
                     if item.get("price_source") == "database" or item["unit_price"] is None:
-                        # No price provided and not in database - ask for price
-                        errors.append(f"Product '{item['name']}' not found in inventory. Please provide price using format: {item['quantity']} {item['name']} @price")
+                        # No price provided and not in database - ask for price or suggest alternatives
+                        error_msg = f"Product '{item_name}' not found in inventory."
+                        if suggestions:
+                            error_msg += f" Did you mean: {', '.join(suggestions[:3])}?"
+                        error_msg += f" Or provide price: {item['quantity']} {item_name} @price"
+                        errors.append(error_msg)
                     else:
                         # Price was provided - use it
-                        warnings.append(f"Product '{item['name']}' not found in inventory - using provided price ${item['unit_price']:.2f}")
+                        warnings.append(f"Product '{item_name}' not found in inventory - using provided price ${item['unit_price']:.2f}")
                         line_total = item["quantity"] * item["unit_price"]
                         
                         validated_item = {
-                            "name": item["name"],
+                            "name": item_name,
                             "quantity": item["quantity"],
                             "unit_price": item["unit_price"],
                             "line_total": line_total,
@@ -527,6 +904,25 @@ class ProductTransactionHelper:
                         }
                         validated_items.append(validated_item)
                         subtotal += line_total
+            
+            # If no items were successfully processed, return error with suggestions
+            if not validated_items:
+                error_summary = "No items could be processed from your message."
+                if errors:
+                    error_summary += " Issues found: " + "; ".join(errors[:3])
+                
+                return {
+                    "success": False,
+                    "errors": [error_summary],
+                    "warnings": warnings,
+                    "receipt": None,
+                    "suggestions": [
+                        "Check your product names against your inventory",
+                        "Use format: 'quantity product' (e.g., '2 bread')",
+                        "Include prices if product not in inventory: '2 bread @1.50'",
+                        "Available products: " + ", ".join(await self._get_available_products(user_id, limit=5))
+                    ]
+                }
             
             # Calculate tax and total
             tax_amount = subtotal * self.tax_rate
@@ -618,6 +1014,8 @@ class ProductTransactionHelper:
                 return {"success": False, "error": "Pending transaction not found"}
             
             pending_receipt = pending_doc.to_dict()
+            if not pending_receipt:
+                return {"success": False, "error": "Invalid transaction data"}
             
             # Verify ownership
             if pending_receipt.get('user_id') != user_id or pending_receipt.get('store_id') != store_id:
@@ -936,3 +1334,47 @@ class ProductTransactionHelper:
             return "transaction"
         
         return "unknown"
+    
+    async def _get_product_suggestions(self, item_name: str, user_id: str, limit: int = 3) -> List[str]:
+        """Get product name suggestions for similar items"""
+        try:
+            products = await self.product_service.get_store_products(user_id)
+            if not products:
+                return []
+            
+            suggestions = []
+            item_name_lower = item_name.lower()
+            
+            for product in products:
+                product_name = product.get('product_name', '')
+                product_name_lower = product_name.lower()
+                
+                # Check for partial matches or similar words
+                if (item_name_lower in product_name_lower or 
+                    product_name_lower in item_name_lower or
+                    any(word in product_name_lower for word in item_name_lower.split()) or
+                    any(word in item_name_lower for word in product_name_lower.split())):
+                    suggestions.append(product_name)
+                
+                if len(suggestions) >= limit:
+                    break
+            
+            return suggestions
+            
+        except Exception as e:
+            logger.error(f"Error getting product suggestions: {e}")
+            return []
+    
+    async def _get_available_products(self, user_id: str, limit: int = 10) -> List[str]:
+        """Get list of available product names"""
+        try:
+            products = await self.product_service.get_store_products(user_id)
+            if not products:
+                return ["No products found in inventory"]
+            
+            product_names = [p.get('product_name', 'Unknown') for p in products[:limit]]
+            return product_names
+            
+        except Exception as e:
+            logger.error(f"Error getting available products: {e}")
+            return ["Error retrieving products"]

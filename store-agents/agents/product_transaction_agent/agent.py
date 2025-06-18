@@ -148,15 +148,59 @@ class ProductTransactionAgent:
             # Step 1: Parse transaction message
             parsed_result = await self.helper.parse_cart_message(request.message)
             
-            if not parsed_result.get("success") or not parsed_result.get("items"):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Could not parse transaction message: {request.message}"
+            logger.info(f"Parsed result: {parsed_result.get('success')}, items: {len(parsed_result.get('items', []))}, confidence: {parsed_result.get('parsing_confidence', 0)}")
+            
+            if not parsed_result.get("success"):
+                # Parsing failed - provide helpful error message
+                error_msg = parsed_result.get("error", "Could not understand your message")
+                suggestions = parsed_result.get("suggestions", [])
+                
+                return TransactionResponse(
+                    success=False,
+                    message=f"I couldn't understand what you want to buy/sell. {error_msg}",
+                    errors=[error_msg],
+                    pending_transaction_id=None,
+                    chat_response=f"""I'm having trouble understanding your transaction. Here are some ways you can tell me about your sales:
+
+**Examples that work well:**
+• `2 bread, 1 milk` (I'll look up prices)
+• `2 bread @1.50, 1 milk @0.75` (with your prices)
+• `sold 3 apples` (simple format)
+
+**Your message:** "{request.message}"
+
+**Suggestions:**
+{chr(10).join(f'• {suggestion}' for suggestion in suggestions)}
+
+Please try again with a clearer format!"""
+                )
+            
+            items = parsed_result.get("items", [])
+            if not items:
+                # No items found - provide specific guidance
+                available_products = await self.helper._get_available_products(request.user_id, limit=5)
+                
+                return TransactionResponse(
+                    success=False,
+                    message="No products found in your message",
+                    errors=["No products could be identified in your message"],
+                    pending_transaction_id=None,
+                    chat_response=f"""I couldn't find any products in your message: "{request.message}"
+
+**Available products in your store:**
+{chr(10).join(f'• {product}' for product in available_products)}
+
+**Try these formats:**
+• `2 bread, 1 milk` 
+• `sold 3 apples by 2.50` 
+• `1 cooking oil @4.75`
+
+What would you like to record?"""
                 )
             
             # Step 2: Compute receipt and validate
             receipt_result = await self.helper.compute_receipt(
-                parsed_result["items"], 
+                items, 
                 request.user_id,
                 request.customer_name or "Walk-in Customer"
             )
@@ -165,11 +209,24 @@ class ProductTransactionAgent:
             warnings = receipt_result.get("warnings", [])
             
             if not receipt_result.get("success"):
+                # Receipt computation failed - provide detailed feedback
+                suggestions = receipt_result.get("suggestions", [])
+                
                 return TransactionResponse(
                     success=False,
-                    message="Transaction validation failed",
+                    message="Transaction could not be completed",
                     errors=errors,
-                    warnings=warnings
+                    warnings=warnings,
+                    pending_transaction_id=None,
+                    chat_response=f"""I found some issues with your transaction:
+
+**Problems:**
+{chr(10).join(f'• {error}' for error in errors)}
+
+**Suggestions:**
+{chr(10).join(f'• {suggestion}' for suggestion in suggestions)}
+
+Please check your product names and try again!"""
                 )
             
             # Step 3: Persist transaction
@@ -189,7 +246,8 @@ class ProductTransactionAgent:
                 receipt=receipt_obj,
                 chat_response=chat_response,
                 errors=errors if errors else None,
-                warnings=warnings if warnings else None
+                warnings=warnings if warnings else None,
+                pending_transaction_id=None
             )
             
             logger.info(f"Transaction {receipt_data['transaction_id']} completed successfully")
@@ -202,7 +260,8 @@ class ProductTransactionAgent:
             return TransactionResponse(
                 success=False,
                 message=f"Transaction processing failed: {str(e)}",
-                errors=[str(e)]
+                errors=[str(e)],
+                pending_transaction_id=None
             )
 
 
