@@ -14,7 +14,8 @@ def start_enhanced_server():
     
     # Set environment variables
     env = os.environ.copy()
-    env['GOOGLE_APPLICATION_CREDENTIALS'] = '/Users/walterbanda/Desktop/AI/adk-a2a/store-agents/vision-api-service.json'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    env['GOOGLE_APPLICATION_CREDENTIALS'] = os.path.join(script_dir, 'vision-api-service.json')
     
     print(f"🔑 Credentials: {env['GOOGLE_APPLICATION_CREDENTIALS']}")
     
@@ -46,7 +47,7 @@ def start_enhanced_server():
         subprocess.run([
             sys.executable, 
             'direct_vision_server.py'
-        ], env=env, cwd='/Users/walterbanda/Desktop/AI/adk-a2a/store-agents')
+        ], env=env, cwd=script_dir)
     except KeyboardInterrupt:
         print("\n🛑 Server stopped by user")
         return True

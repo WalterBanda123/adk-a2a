@@ -19,7 +19,7 @@ def create_get_user_tool(user_service):
         """
         try:
             # Get user profile information
-            user_profile = await user_service.get_user_profile(user_id)
+            user_profile = await user_service.get_user_info(user_id)
             
             if not user_profile:
                 return {

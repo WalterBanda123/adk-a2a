@@ -1,4 +1,5 @@
 import os
+import os
 import sys
 from contextlib import AsyncExitStack
 from google.adk.agents import Agent
@@ -14,6 +15,7 @@ from .product_management_subagent import create_product_management_subagent
 from .user_greeting_subagent import create_user_greeting_subagent
 from .business_advisory_subagent import create_business_advisory_subagent
 from .add_new_product_subagent import create_add_new_product_subagent
+from .product_transaction_subagent import create_product_transaction_subagent
 
 
 
@@ -42,6 +44,9 @@ async def create_main_agent():
     print("Creating Add New Product Sub-Agent...")
     add_new_product_agent = await create_add_new_product_subagent()
     
+    print("Creating Product Transaction Sub-Agent...")
+    product_transaction_agent = await create_product_transaction_subagent()
+    
     # Create the coordinator agent
     coordinator = Agent(
         model=llm,
@@ -53,7 +58,8 @@ async def create_main_agent():
             product_management_agent,
             user_greeting_agent,
             business_advisory_agent,
-            add_new_product_agent
+            add_new_product_agent,
+            product_transaction_agent
         ],
         instruction=(
             "You are the Smart Business Assistant Coordinator for informal traders in Zimbabwe. "
@@ -97,6 +103,13 @@ async def create_main_agent():
             "- Market analysis and competitive insights\n"
             "- Problem-solving and general mentorship\n\n"
             
+            "🔄 PRODUCT TRANSACTION AGENT: Handles advanced product operations\n"
+            "- Image-based product registration using AutoML Vision\n"
+            "- Natural language transaction processing and parsing\n"
+            "- Sales transaction recording with automatic tax calculation\n"
+            "- Receipt generation and inventory updates\n"
+            "- Process multiple items in conversational format\n\n"
+            
             "⚡ DELEGATION STRATEGY:\n"
             "- Greetings/profile updates → User Greeting Agent\n"
             "- EXPLICIT REPORT REQUESTS ONLY → Financial Reporting Agent\n"
@@ -111,6 +124,12 @@ async def create_main_agent():
             "  * 'Analyze this product image', 'Extract info from image'\n"
             "  * 'Add product from photo', 'What product is this?'\n"
             "  * Any request involving product image analysis or vision processing\n"
+            "- PRODUCT REGISTRATION & TRANSACTIONS → Product Transaction Agent\n"
+            "  * 'Register product from image', 'Scan this product for SKU'\n"
+            "  * 'I sold 2 bread and 1 milk', 'Process this sale'\n"
+            "  * Natural language transaction recording: '3 chips @0.5, 2 coke @0.8'\n"
+            "  * AutoML-based product registration and receipt generation\n"
+            "  * Any complex transaction parsing or sales recording\n"
             "- General business questions → Business Advisory Agent\n"
             "  * Performance questions without report requests\n"
             "  * 'How is my business doing?', 'What are my sales?'\n"

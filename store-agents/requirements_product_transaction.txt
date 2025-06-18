@@ -1,0 +1,28 @@
+# Additional requirements for Product Transaction Agent
+# These are in addition to the base requirements.txt
+
+# Core FastAPI and web framework dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+
+# Google Cloud dependencies (AutoML, Vision, Storage)
+google-cloud-automl>=2.11.0
+google-cloud-vision>=3.4.0
+google-cloud-storage>=2.10.0
+
+# Firebase dependencies
+firebase-admin>=6.2.0
+
+# Image processing
+Pillow>=10.0.0
+
+# HTTP requests for URL image processing
+requests>=2.31.0
+
+# Async support
+aiofiles>=23.0.0
+
+# Optional: Enhanced text processing
+fuzzywuzzy>=0.18.0
+python-levenshtein>=0.21.0

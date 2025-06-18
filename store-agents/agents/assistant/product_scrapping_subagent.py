@@ -5,21 +5,48 @@ Handles extraction and storage of product information from images and other sour
 
 import logging
 import json
-import uuid
-from datetime import datetime
+            # Create scrap from parsed text
+            scrap_data = self._create_scrap_from_text(parsed_data, text_data, source_context, tags)
+            
+            # Store the scrap if service is available
+            if self._is_service_available():
+                scrap_id = await self.storage_service.store_scrap(scrap_data)
+                logger.info(f"✅ Text scrap created with ID: {scrap_id}")
+                
+                return {
+                    "success": True,
+                    "scrap_id": scrap_id,
+                    "extracted_data": parsed_data,
+                    "message": f"Text successfully parsed and stored as scrap {scrap_id}"
+                }
+            else:
+                return {
+                    "success": True,
+                    "scrap_id": None,
+                    "extracted_data": parsed_data,
+                    "message": "Text successfully parsed (storage service unavailable)"
+                }om datetime import datetime
 from typing import Dict, Any, Optional, List
 from google.adk.tools import FunctionTool
 
 # Import our enhanced vision processor
+import sys
+import os
 try:
-    from ...enhanced_add_product_vision_tool_clean import EnhancedProductVisionProcessor
+    # Add project root to path
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, project_root)
+    from enhanced_add_product_vision_tool_clean import EnhancedProductVisionProcessor
+    from common.scraps_storage_service import ScrapsStorageService
     ENHANCED_VISION_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     ENHANCED_VISION_AVAILABLE = False
-    print("Enhanced vision processor not available")
-
-# Import storage service
-from ...common.scraps_storage_service import ScrapsStorageService
+    print(f"Enhanced vision processor not available: {e}")
+    # Fallback for storage service
+    try:
+        from common.scraps_storage_service import ScrapsStorageService
+    except ImportError:
+        ScrapsStorageService = None
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +59,7 @@ class ProductScrappingSubagent:
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.vision_processor = None
-        self.storage_service = ScrapsStorageService(user_id)
+        self.storage_service = ScrapsStorageService(user_id) if ScrapsStorageService else None
         
         # Initialize vision processor if available
         if ENHANCED_VISION_AVAILABLE:
@@ -75,17 +102,24 @@ class ProductScrappingSubagent:
                     # Create scrap from vision result
                     scrap_data = self._create_scrap_from_vision_result(result, source_context, tags)
                     
-                    # Store the scrap
-                    scrap_id = await self.storage_service.store_scrap(scrap_data)
-                    
-                    logger.info(f"✅ Product scrap created with ID: {scrap_id}")
-                    
-                    return {
-                        "success": True,
-                        "scrap_id": scrap_id,
-                        "extracted_data": result,
-                        "message": f"Product information successfully scraped and stored as {scrap_id}"
-                    }
+                    # Store the scrap if service is available
+                    if self._is_service_available():
+                        scrap_id = await self.storage_service.store_scrap(scrap_data)
+                        logger.info(f"✅ Product scrap created with ID: {scrap_id}")
+                        
+                        return {
+                            "success": True,
+                            "scrap_id": scrap_id,
+                            "extracted_data": result,
+                            "message": f"Product information successfully scraped and stored as {scrap_id}"
+                        }
+                    else:
+                        return {
+                            "success": True,
+                            "scrap_id": None,
+                            "extracted_data": result,
+                            "message": "Product information successfully scraped (storage service unavailable)"
+                        }
                 else:
                     logger.error(f"Vision processing failed: {result.get('error')}")
                     return {
@@ -94,14 +128,20 @@ class ProductScrappingSubagent:
                     }
             else:
                 # Fallback: store basic image scrap without processing
-                scrap_data = self._create_basic_image_scrap(image_data, is_url, source_context, tags)
-                scrap_id = await self.storage_service.store_scrap(scrap_data)
-                
-                return {
-                    "success": True,
-                    "scrap_id": scrap_id,
-                    "message": f"Image stored as basic scrap {scrap_id} (vision processing unavailable)"
-                }
+                if self._is_service_available():
+                    scrap_data = self._create_basic_image_scrap(image_data, is_url, source_context, tags)
+                    scrap_id = await self.storage_service.store_scrap(scrap_data)
+                    
+                    return {
+                        "success": True,
+                        "scrap_id": scrap_id,
+                        "message": f"Image stored as basic scrap {scrap_id} (vision processing unavailable)"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "Both vision processing and storage services are unavailable"
+                    }
                 
         except Exception as e:
             logger.error(f"Error in scrap_product_from_image: {e}")
@@ -346,3 +386,11 @@ class ProductScrappingSubagent:
                     parsed_data["unit"] = size_match.group(2)
         
         return parsed_data
+    
+    def _is_service_available(self) -> bool:
+        """Check if scraps storage service is available"""
+        return self.storage_service is not None
+    
+    def _is_vision_available(self) -> bool:
+        """Check if vision processor is available"""
+        return self.vision_processor is not None
