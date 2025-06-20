@@ -6,7 +6,7 @@ from google.adk.models.lite_llm import LiteLlm
 # Add the parent directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from common.product_service import ProductService
+from common.real_product_service import RealProductService
 from .tools.get_products_tool import create_get_products_tool
 
 async def create_product_management_subagent():
@@ -16,7 +16,7 @@ async def create_product_management_subagent():
     llm = LiteLlm(model="gemini/gemini-1.5-flash-latest", api_key=os.environ.get("GOOGLE_API_KEY"))
     
     # Initialize services
-    product_service = ProductService()
+    product_service = RealProductService()
     
     # Create product tool
     get_products_tool = create_get_products_tool(product_service)

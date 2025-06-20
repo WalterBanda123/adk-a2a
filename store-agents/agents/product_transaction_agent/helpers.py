@@ -746,6 +746,11 @@ class ProductTransactionHelper:
                 # Multiple matching strategies
                 score = self._calculate_product_match_score(name_cleaned, product_name_cleaned, name, product_name)
                 
+                # Enhanced debugging for brand matching
+                if name.lower() == "mazoe":
+                    brand_score = self._check_brand_match(name, product_name)
+                    logger.info(f"MAZOE DEBUG: '{name}' vs '{product_name}' -> score: {score:.3f}, brand_score: {brand_score:.3f}")
+                
                 logger.debug(f"Matching '{name}' vs '{product_name}': score = {score:.3f}")
                 
                 # Lowered threshold from 0.4 to 0.3 for better fuzzy matching
@@ -756,8 +761,10 @@ class ProductTransactionHelper:
             
             if best_match:
                 logger.info(f"✅ Found product match: '{name}' -> '{best_match.get('product_name')}' (score: {best_score:.2f})")
+                logger.info(f"✅ Will use database price: ${best_match.get('unit_price', 'No price')}")
             else:
                 logger.warning(f"❌ No product match found for: '{name}' (tried {len(products)} products, best score: {best_score:.3f})")
+                logger.warning(f"❌ This is why prices are being guessed! Product '{name}' not found in database.")
                 
             return best_match
             
@@ -934,8 +941,15 @@ class ProductTransactionHelper:
                 # Give higher score for brand matches
                 return 0.9
         
-        # Also check if the entire input is just a brand name
-        if name1_lower in common_brands and name1_lower in name2_lower:
+        # ENHANCED: Check if the entire input is just a brand name that appears in product
+        # This handles "mazoe" matching "Mazoe Orange Crush" or "Raspberry Juice" (brand: Mazoe)
+        if name1_lower in common_brands:
+            # Input is a pure brand name - check if product contains this brand
+            if name1_lower in name2_lower:
+                return 0.95  # Very high score for exact brand matches
+        
+        # Also check reverse case
+        if name2_lower in common_brands and name2_lower in name1_lower:
             return 0.95
         
         return 0.0

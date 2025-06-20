@@ -108,7 +108,8 @@ class RealProductService:
             if not product_data:
                 return {"success": False, "message": "Invalid product data"}
             
-            if product_data.get('store_owner_id') != user_id:
+            # Use only standardized userId field for ownership check
+            if product_data.get('userId') != user_id:
                 return {"success": False, "message": "Unauthorized: Product belongs to different user"}
             
             product_ref.update(updates)
@@ -139,7 +140,8 @@ class RealProductService:
             if not product_data:
                 return {"success": False, "message": "Invalid product data"}
             
-            if product_data.get('store_owner_id') != user_id:
+            # Use only standardized userId field for ownership check
+            if product_data.get('userId') != user_id:
                 return {"success": False, "message": "Unauthorized: Product belongs to different user"}
             
             product_ref.update({

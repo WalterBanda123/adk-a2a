@@ -249,28 +249,29 @@ What would you like to record?"""
 Please check your product names and try again!"""
                 )
             
-            # Step 3: Persist transaction
+            # Step 3: Save as pending transaction (requiring confirmation)
             receipt_data = receipt_result["receipt"]
-            persistence_success = await self.helper.persist_transaction(receipt_data)
+            pending_saved = await self.helper.save_pending_transaction(receipt_data)
             
-            if not persistence_success:
-                raise HTTPException(status_code=500, detail="Failed to save transaction")
+            if not pending_saved:
+                raise HTTPException(status_code=500, detail="Failed to save pending transaction")
             
-            # Step 4: Format response
+            # Step 4: Format confirmation request
             receipt_obj = Receipt(**receipt_data)
-            chat_response = self.helper.format_chat_response(receipt_data, errors, warnings)
+            confirmation_message = self.helper.format_confirmation_request(receipt_data)
             
             response = TransactionResponse(
                 success=True,
-                message="Transaction processed successfully",
+                message="Transaction registered and awaiting confirmation",
                 receipt=receipt_obj,
-                chat_response=chat_response,
+                chat_response=confirmation_message,
                 errors=errors if errors else None,
                 warnings=warnings if warnings else None,
-                pending_transaction_id=None
+                pending_transaction_id=receipt_data['transaction_id'],
+                confirmation_required=True
             )
             
-            logger.info(f"Transaction {receipt_data['transaction_id']} completed successfully")
+            logger.info(f"Transaction {receipt_data['transaction_id']} registered and awaiting confirmation")
             return response
             
         except HTTPException:

@@ -66,6 +66,10 @@ class UnifiedChatCoordinator:
                 r'^hello$', r'^hi$', r'^hey$', r'good morning', r'good afternoon', 
                 r'good evening', r'^greetings$', r'hey there', r'hello there'
             ],
+            'transaction_confirmation': [
+                r'^confirm\s+[Tt][Xx][Nn]_.*', r'^cancel\s+[Tt][Xx][Nn]_.*', 
+                r'confirm.*transaction', r'cancel.*transaction'
+            ],
             'product_registration': [
                 r'register.*product', r'add.*product.*image', r'scan.*product',
                 r'new.*product.*photo', r'upload.*product', r'analyze.*image'
@@ -125,6 +129,9 @@ class UnifiedChatCoordinator:
         try:
             if intent == 'greeting':
                 return await self.handle_general_help(message, user_id, context)
+            
+            elif intent == 'transaction_confirmation':
+                return await self.handle_transaction_confirmation(message, user_id, context)
             
             elif intent == 'product_registration':
                 return await self.handle_product_registration(message, user_id, context)
@@ -207,8 +214,11 @@ class UnifiedChatCoordinator:
             
             result = await self.product_agent.process_chat_transaction(request)
             
+            # Use chat_response if available (contains formatted confirmation), otherwise use message
+            response_message = result.chat_response if result.chat_response else result.message
+            
             return {
-                "message": result.message,
+                "message": response_message,
                 "agent_used": "transaction_processor",
                 "status": "success" if result.success else "error",
                 "data": {
@@ -452,13 +462,93 @@ Just type naturally - I'll understand what you need! 😊
                 "status": "error"
             }
     
+    async def handle_transaction_confirmation(self, message: str, user_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle transaction confirmation or cancellation"""
+        try:
+            # Parse the confirmation command
+            message_lower = message.lower().strip()
+            
+            # Extract transaction ID and action
+            import re
+            
+            # Look for patterns like "confirm TXN_..." or "cancel TXN_..."
+            confirm_match = re.match(r'^confirm\s+(txn_[a-zA-Z0-9_]+)', message_lower)
+            cancel_match = re.match(r'^cancel\s+(txn_[a-zA-Z0-9_]+)', message_lower)
+            
+            if confirm_match:
+                transaction_id = confirm_match.group(1).upper()  # Convert back to uppercase
+                action = "confirm"
+            elif cancel_match:
+                transaction_id = cancel_match.group(1).upper()  # Convert back to uppercase
+                action = "cancel"
+            else:
+                return {
+                    "message": "❌ Invalid confirmation format. Please use 'confirm TXN_...' or 'cancel TXN_...'",
+                    "agent_used": "transaction_confirmation",
+                    "status": "error"
+                }
+            
+            logger.info(f"Processing {action} for transaction {transaction_id} by user {user_id}")
+            
+            # Use the product transaction helper to confirm/cancel
+            from agents.product_transaction_agent.helpers import ProductTransactionHelper
+            helper = ProductTransactionHelper()
+            
+            # For store_id, use user_id as default (common pattern in the system)
+            store_id = user_id
+            
+            result = await helper.confirm_transaction(
+                transaction_id=transaction_id,
+                user_id=user_id,
+                store_id=store_id,
+                action=action
+            )
+            
+            if result.get("success"):
+                # Format the response using the helper's formatter
+                response_message = helper.format_confirmation_response(result)
+                
+                return {
+                    "message": response_message,
+                    "agent_used": "transaction_confirmation",
+                    "status": "success",
+                    "data": {
+                        "transaction_id": transaction_id,
+                        "action": action,
+                        "receipt": result.get("receipt")
+                    }
+                }
+            else:
+                error_msg = result.get("error", "Unknown error during confirmation")
+                logger.error(f"Confirmation failed for {transaction_id}: {error_msg}")
+                
+                return {
+                    "message": f"❌ Failed to {action} transaction: {error_msg}",
+                    "agent_used": "transaction_confirmation",
+                    "status": "error",
+                    "data": {
+                        "transaction_id": transaction_id,
+                        "action": action,
+                        "error": error_msg
+                    }
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in transaction confirmation: {e}")
+            return {
+                "message": "I apologize, but I'm still encountering an error when trying to confirm the transaction. There may be a problem with the system. Please try again later, or contact support for assistance.",
+                "agent_used": "transaction_confirmation",
+                "status": "error"
+            }
+
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
         """
         Main chat processing function
         """
         try:
-            # Ensure user_id is available
-            if not request.user_id:
+            # Ensure user_id is available - check direct field first, then context
+            user_id = request.user_id or request.context.get('user_id')
+            if not user_id:
                 return ChatResponse(
                     message="❌ User ID is required for processing.",
                     agent_used="error_handler",
@@ -470,6 +560,8 @@ Just type naturally - I'll understand what you need! 😊
             has_image = bool(request.image_data)
             intent = self.detect_intent(request.message, has_image)
             
+            logger.info(f"Processing message: '{request.message}' | Intent: {intent} | User: {user_id}")
+            
             # Prepare context
             context = dict(request.context)
             if request.image_data:
@@ -480,7 +572,7 @@ Just type naturally - I'll understand what you need! 😊
                 context['session_id'] = request.session_id
             
             # Route to appropriate agent
-            result = await self.route_to_agent(intent, request.message, request.user_id, context)
+            result = await self.route_to_agent(intent, request.message, user_id, context)
             
             return ChatResponse(
                 message=result["message"],
