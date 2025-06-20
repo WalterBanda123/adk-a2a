@@ -131,21 +131,41 @@ class ProductTransactionAgent:
     
     async def process_chat_transaction(self, request: TransactionRequest) -> TransactionResponse:
         """
-        Process a chat-based transaction
+        Process a chat-based transaction or stock inquiry
         
         Process:
-        1. Parse free-form transaction text
-        2. Look up products and validate stock
-        3. Compute receipt with tax
-        4. Update stock levels
-        5. Persist transaction
-        6. Return formatted response
+        1. Check if message is a stock inquiry
+        2. If stock inquiry: return inventory information  
+        3. If transaction: Parse free-form transaction text
+        4. Look up products and validate stock
+        5. Compute receipt with tax
+        6. Update stock levels
+        7. Persist transaction
+        8. Return formatted response
         """
         try:
-            logger.info(f"Processing transaction for user: {request.user_id}")
-            logger.info(f"Transaction message: {request.message}")
+            logger.info(f"Processing message for user: {request.user_id}")
+            logger.info(f"Message: {request.message}")
             
-            # Step 1: Parse transaction message
+            # Step 1: Check if this is a stock inquiry
+            if self.helper.is_stock_inquiry(request.message):
+                logger.info("Detected stock inquiry")
+                stock_result = await self.helper.handle_stock_inquiry(request.message, request.user_id)
+                
+                return TransactionResponse(
+                    success=stock_result.get("success", True),
+                    message=stock_result.get("message", "Stock information retrieved"),
+                    receipt=None,
+                    frontend_receipt=None,
+                    chat_response=stock_result.get("message", "Stock information retrieved"),
+                    errors=None if stock_result.get("success") else [stock_result.get("message", "Error retrieving stock")],
+                    warnings=None,
+                    confirmation_required=False,
+                    pending_transaction_id=None
+                )
+            
+            # Step 2: Process as regular transaction
+            # Parse transaction message
             parsed_result = await self.helper.parse_cart_message(request.message)
             
             logger.info(f"Parsed result: {parsed_result.get('success')}, items: {len(parsed_result.get('items', []))}, confidence: {parsed_result.get('parsing_confidence', 0)}")

@@ -1,0 +1,127 @@
+{
+  "name": "Receipt/Transaction Model Schema",
+  "collection": "transactions",
+  "fields": {
+    "transaction_id": {
+      "type": "string",
+      "description": "Unique transaction ID",
+      "required": true
+    },
+    "userId": {
+      "type": "string",
+      "description": "Store owner user ID",
+      "required": true
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Legacy user ID field",
+      "required": false
+    },
+    "customer_name": {
+      "type": "string",
+      "description": "Customer name",
+      "required": false
+    },
+    "store_id": {
+      "type": "string",
+      "description": "Store identifier",
+      "required": true
+    },
+    "date": {
+      "type": "string",
+      "description": "Transaction date (YYYY-MM-DD)",
+      "required": true
+    },
+    "time": {
+      "type": "string",
+      "description": "Transaction time (HH:MM:SS)",
+      "required": true
+    },
+    "created_at": {
+      "type": "string",
+      "description": "Creation timestamp (ISO)",
+      "required": true
+    },
+    "items": {
+      "type": "array",
+      "description": "List of transaction items",
+      "required": true,
+      "item_schema": {
+        "name": {
+          "type": "string",
+          "description": "Product name",
+          "required": true
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Quantity sold",
+          "required": true
+        },
+        "unit_price": {
+          "type": "number",
+          "description": "Price per unit",
+          "required": true
+        },
+        "line_total": {
+          "type": "number",
+          "description": "Total for this line",
+          "required": true
+        },
+        "sku": {
+          "type": "string",
+          "description": "Product SKU",
+          "required": false
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category",
+          "required": false
+        }
+      }
+    },
+    "subtotal": {
+      "type": "number",
+      "description": "Subtotal before tax",
+      "required": true
+    },
+    "tax_rate": {
+      "type": "number",
+      "description": "Tax rate applied",
+      "required": true,
+      "default": 0.05
+    },
+    "tax_amount": {
+      "type": "number",
+      "description": "Tax amount",
+      "required": true
+    },
+    "total": {
+      "type": "number",
+      "description": "Total amount",
+      "required": true
+    },
+    "payment_method": {
+      "type": "string",
+      "description": "Payment method",
+      "required": true,
+      "default": "cash"
+    },
+    "change_due": {
+      "type": "number",
+      "description": "Change given to customer",
+      "required": false
+    },
+    "status": {
+      "type": "string",
+      "description": "Transaction status",
+      "required": true,
+      "default": "completed",
+      "enum": [
+        "pending",
+        "completed",
+        "cancelled",
+        "refunded"
+      ]
+    }
+  }
+}

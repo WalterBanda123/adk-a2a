@@ -144,7 +144,16 @@ class UserService:
                 logger.info(f"Retrieved store data by user_id field for: {user_id}")
                 return store_data
             
-            # Strategy 3: Try store document with user_id as document ID
+            # Strategy 3: Query stores collection by userId field (camelCase)
+            stores_ref = self.db.collection('stores').where('userId', '==', user_id).limit(1)
+            stores = stores_ref.get()
+            
+            if stores:
+                store_data = stores[0].to_dict()
+                logger.info(f"Retrieved store data by userId field for: {user_id}")
+                return store_data
+            
+            # Strategy 4: Try store document with user_id as document ID
             store_ref = self.db.collection('stores').document(user_id)
             store_doc = store_ref.get()
             

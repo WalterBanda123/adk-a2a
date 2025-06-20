@@ -76,11 +76,9 @@ class FinancialService:
             
             for collection_name in collection_names:
                 try:
+                    # Strategy 1: Query by user_id field
                     query = self.db.collection(collection_name).where('user_id', '==', user_id)
-                    
-                    # Filter by date string format (YYYY-MM-DD)
                     query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
-                    
                     docs = query.get()
                     
                     for doc in docs:
@@ -90,6 +88,20 @@ class FinancialService:
                                 data['id'] = doc.id
                                 data['collection'] = collection_name
                                 transactions.append(data)
+                    
+                    # Strategy 2: Query by userId field (camelCase) - only if no results from user_id
+                    if not docs:
+                        query = self.db.collection(collection_name).where('userId', '==', user_id)
+                        query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                        docs = query.get()
+                        
+                        for doc in docs:
+                            if doc.exists:
+                                data = doc.to_dict()
+                                if data:  # Add null check
+                                    data['id'] = doc.id
+                                    data['collection'] = collection_name
+                                    transactions.append(data)
                         
                 except Exception as e:
                     logger.debug(f"Collection {collection_name} not found or no date field: {str(e)}")
@@ -113,9 +125,9 @@ class FinancialService:
             end_date_str = end_date.strftime("%Y-%m-%d")
             
             try:
+                # Strategy 1: Query by user_id field
                 query = self.db.collection('sales').where('user_id', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
-                
                 docs = query.get()
                 
                 for doc in docs:
@@ -124,6 +136,19 @@ class FinancialService:
                         if data:  # Add null check
                             data['id'] = doc.id
                             sales.append(data)
+                
+                # Strategy 2: Query by userId field (camelCase) - only if no results from user_id
+                if not docs:
+                    query = self.db.collection('sales').where('userId', '==', user_id)
+                    query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                    docs = query.get()
+                    
+                    for doc in docs:
+                        if doc.exists:
+                            data = doc.to_dict()
+                            if data:  # Add null check
+                                data['id'] = doc.id
+                                sales.append(data)
                     
             except Exception as e:
                 logger.debug(f"Sales collection query failed: {str(e)}")
@@ -146,9 +171,9 @@ class FinancialService:
             end_date_str = end_date.strftime("%Y-%m-%d")
             
             try:
+                # Strategy 1: Query by user_id field
                 query = self.db.collection('expenses').where('user_id', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
-                
                 docs = query.get()
                 
                 for doc in docs:
@@ -157,6 +182,19 @@ class FinancialService:
                         if data:  # Add null check
                             data['id'] = doc.id
                             expenses.append(data)
+                
+                # Strategy 2: Query by userId field (camelCase) - only if no results from user_id
+                if not docs:
+                    query = self.db.collection('expenses').where('userId', '==', user_id)
+                    query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                    docs = query.get()
+                    
+                    for doc in docs:
+                        if doc.exists:
+                            data = doc.to_dict()
+                            if data:  # Add null check
+                                data['id'] = doc.id
+                                expenses.append(data)
                     
             except Exception as e:
                 logger.debug(f"Expenses collection query failed: {str(e)}")
@@ -179,9 +217,9 @@ class FinancialService:
             end_date_str = end_date.strftime("%Y-%m-%d")
             
             try:
+                # Strategy 1: Query by user_id field
                 query = self.db.collection('inventory').where('user_id', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
-                
                 docs = query.get()
                 
                 for doc in docs:
@@ -190,6 +228,19 @@ class FinancialService:
                         if data:  # Add null check
                             data['id'] = doc.id
                             inventory.append(data)
+                
+                # Strategy 2: Query by userId field (camelCase) - only if no results from user_id
+                if not docs:
+                    query = self.db.collection('inventory').where('userId', '==', user_id)
+                    query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                    docs = query.get()
+                    
+                    for doc in docs:
+                        if doc.exists:
+                            data = doc.to_dict()
+                            if data:  # Add null check
+                                data['id'] = doc.id
+                                inventory.append(data)
                     
             except Exception as e:
                 logger.debug(f"Inventory collection query failed: {str(e)}")

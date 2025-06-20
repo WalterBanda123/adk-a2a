@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User's chat message")
-    user_id: str = Field(..., description="User identifier")
+    user_id: Optional[str] = Field(None, description="User identifier (can be in context instead)")
     session_id: Optional[str] = Field(None, description="Session identifier")
     context: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
     image_data: Optional[str] = Field(None, description="Base64 image data for vision tasks")
@@ -62,13 +62,18 @@ class UnifiedChatCoordinator:
         
         # Intent patterns for routing
         self.intent_patterns = {
+            'greeting': [
+                r'^hello$', r'^hi$', r'^hey$', r'good morning', r'good afternoon', 
+                r'good evening', r'^greetings$', r'hey there', r'hello there'
+            ],
             'product_registration': [
                 r'register.*product', r'add.*product.*image', r'scan.*product',
                 r'new.*product.*photo', r'upload.*product', r'analyze.*image'
             ],
             'transaction': [
                 r'sold.*', r'sale.*', r'customer.*bought', r'purchase.*',
-                r'transaction.*', r'receipt.*', r'checkout.*', r'buy.*'
+                r'transaction.*', r'receipt.*', r'checkout.*', r'buy.*',
+                r'i.*sold.*', r'we.*sold.*', r'sell.*', r'selling.*'
             ],
             'petty_cash': [
                 r'petty.*cash', r'small.*expense', r'office.*supplies',
@@ -118,7 +123,10 @@ class UnifiedChatCoordinator:
         Route request to appropriate sub-agent
         """
         try:
-            if intent == 'product_registration':
+            if intent == 'greeting':
+                return await self.handle_general_help(message, user_id, context)
+            
+            elif intent == 'product_registration':
                 return await self.handle_product_registration(message, user_id, context)
             
             elif intent == 'transaction':
@@ -193,7 +201,8 @@ class UnifiedChatCoordinator:
             request = TransactionRequest(
                 message=message,
                 user_id=user_id,
-                store_id=context.get('store_id')
+                customer_name=context.get('customer_name'),
+                payment_method=context.get('payment_method', 'cash')
             )
             
             result = await self.product_agent.process_chat_transaction(request)
@@ -332,8 +341,76 @@ class UnifiedChatCoordinator:
             }
     
     async def handle_general_help(self, message: str, user_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle general help and unknown requests"""
-        help_message = """
+        """Handle general help and greetings with personalized user recognition"""
+        try:
+            message_lower = message.lower()
+            
+            # Check if this is a greeting
+            greeting_patterns = [r'hello', r'hi', r'hey', r'good morning', r'good afternoon', r'good evening', r'greetings']
+            is_greeting = any(re.search(pattern, message_lower) for pattern in greeting_patterns)
+            
+            if is_greeting:
+                # Load user profile for personalized greeting
+                user_info = await self.user_service.get_user_info(user_id)
+                store_info = await self.user_service.get_store_info(user_id)
+                
+                if user_info and store_info:
+                    # Personalized greeting for existing user
+                    user_name = user_info.get('name', 'there')
+                    store_name = store_info.get('store_name', 'your store')
+                    business_type = store_info.get('business_type', 'business')
+                    
+                    # Get recent activity context
+                    products = await self.product_service.get_store_products(user_id)
+                    product_count = len(products) if products else 0
+                    
+                    greeting_message = f"""👋 Hello {user_name}! Welcome back to your {business_type}.
+
+🏪 **{store_name}** Dashboard:
+📦 Products in inventory: {product_count}
+🆔 Session ID: {context.get('session_id', 'N/A')}
+
+What would you like to do today?
+• 📸 Register new products (upload images)
+• 💰 Process sales transactions  
+• 📊 Check inventory or analytics
+• 💵 Manage cash (petty cash, deposits, drawings)
+
+Just tell me what you need! 😊"""
+                    
+                    return {
+                        "message": greeting_message,
+                        "agent_used": "personalized_greeting",
+                        "status": "success",
+                        "data": {
+                            "user_info": user_info,
+                            "store_info": store_info,
+                            "product_count": product_count,
+                            "recognized_user": True
+                        }
+                    }
+                
+                elif user_info:
+                    # User exists but no store info
+                    user_name = user_info.get('name', 'there')
+                    return {
+                        "message": f"👋 Hello {user_name}! I see you have a profile but no store setup yet. Let me help you set up your store information first. What type of business are you running?",
+                        "agent_used": "user_setup_assistant",
+                        "status": "success",
+                        "data": {"user_info": user_info, "needs_store_setup": True}
+                    }
+                
+                else:
+                    # New user - need full setup
+                    return {
+                        "message": f"👋 Hello there! Welcome! I see you're a new user (ID: {user_id[:8]}...). To get started, could you please tell me your name and a little about your store? What type of business do you run, and what is its name?",
+                        "agent_used": "new_user_onboarding",
+                        "status": "success", 
+                        "data": {"new_user": True, "user_id": user_id}
+                    }
+            
+            # Not a greeting - show general help
+            help_message = """
 🤖 **Store Assistant - How I Can Help:**
 
 📸 **Product Management:**
@@ -359,19 +436,36 @@ class UnifiedChatCoordinator:
 
 Just type naturally - I'll understand what you need! 😊
 """
-        
-        return {
-            "message": help_message,
-            "agent_used": "help_assistant",
-            "status": "success",
-            "data": {"available_features": ["product_registration", "transactions", "cash_management", "inventory", "reports"]}
-        }
+            
+            return {
+                "message": help_message,
+                "agent_used": "help_assistant",
+                "status": "success",
+                "data": {"available_features": ["product_registration", "transactions", "cash_management", "inventory", "reports"]}
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in handle_general_help: {str(e)}")
+            return {
+                "message": f"👋 Hello! I encountered an issue loading your profile: {str(e)}. How can I help you today?",
+                "agent_used": "error_fallback",
+                "status": "error"
+            }
     
     async def process_chat(self, request: ChatRequest) -> ChatResponse:
         """
         Main chat processing function
         """
         try:
+            # Ensure user_id is available
+            if not request.user_id:
+                return ChatResponse(
+                    message="❌ User ID is required for processing.",
+                    agent_used="error_handler",
+                    status="error",
+                    session_id=request.session_id
+                )
+            
             # Detect intent
             has_image = bool(request.image_data)
             intent = self.detect_intent(request.message, has_image)
@@ -381,6 +475,9 @@ Just type naturally - I'll understand what you need! 😊
             if request.image_data:
                 context['image_data'] = request.image_data
                 context['is_url'] = request.is_url
+            # Pass session_id in context
+            if request.session_id:
+                context['session_id'] = request.session_id
             
             # Route to appropriate agent
             result = await self.route_to_agent(intent, request.message, request.user_id, context)
@@ -422,7 +519,28 @@ async def chat_endpoint(request: ChatRequest = Body(...)):
     """
     Unified chat endpoint that handles all store management interactions
     """
-    return await coordinator.process_chat(request)
+    # Extract user_id from request or context
+    user_id = request.user_id or request.context.get("user_id")
+    
+    if not user_id:
+        return ChatResponse(
+            message="❌ User ID is required. Please provide user_id in the request or context.",
+            agent_used="error_handler",
+            status="error",
+            session_id=request.session_id
+        )
+    
+    # Create a new request with the extracted user_id
+    updated_request = ChatRequest(
+        message=request.message,
+        user_id=user_id,
+        session_id=request.session_id,
+        context=request.context,
+        image_data=request.image_data,
+        is_url=request.is_url
+    )
+    
+    return await coordinator.process_chat(updated_request)
 
 @app.get("/health")
 async def health_check():

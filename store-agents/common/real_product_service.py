@@ -66,9 +66,9 @@ class RealProductService:
                 if field not in product_data:
                     return {"success": False, "message": f"Missing required field: {field}"}
             
-            # Add system fields
+            # Add system fields (using standardized userId field only)
             product_data.update({
-                "store_owner_id": user_id,
+                "userId": user_id,  # Primary field for user identification (STANDARDIZED)
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "status": "active"
@@ -167,28 +167,33 @@ class RealProductService:
             return {"success": False, "message": f"Failed to delete product: {str(e)}"}
 
     async def get_store_products(self, user_id: str, include_inactive: bool = False) -> Optional[List[Dict[str, Any]]]:
-        """Get all products for a user's store"""
+        """Get all products for a user's store using standardized userId field"""
         try:
             if not self.db:
                 logger.warning("No database connection available")
                 return None
             
-            query = self.db.collection('products').where('store_owner_id', '==', user_id)
-            
-            if not include_inactive:
-                query = query.where('status', '==', 'active')
-            
-            docs = query.get()
-            
+            # Use standardized userId field only
             products = []
-            for doc in docs:
-                product_data = doc.to_dict()
-                if product_data:  # Only process if product_data is not None
-                    product_data['id'] = doc.id
-                    products.append(product_data)
             
-            logger.info(f"Retrieved {len(products)} products for user_id: {user_id}")
-            return products
+            try:
+                query = self.db.collection('products').where('userId', '==', user_id)
+                if not include_inactive:
+                    query = query.where('status', '==', 'active')
+                docs = query.get()
+                
+                for doc in docs:
+                    product_data = doc.to_dict()
+                    if product_data:
+                        product_data['id'] = doc.id
+                        products.append(product_data)
+                        
+                logger.info(f"Found {len(products)} products for user: {user_id}")
+                return products
+                        
+            except Exception as e:
+                logger.error(f"Error querying products by userId: {e}")
+                return None
                 
         except Exception as e:
             logger.error(f"Error retrieving products for {user_id}: {str(e)}")
@@ -210,8 +215,9 @@ class RealProductService:
             if not product_data:
                 return {"success": False, "message": "Invalid product data"}
             
-            if product_data.get('store_owner_id') != user_id:
-                return {"success": False, "message": "Unauthorized"}
+            # Check authorization using standardized userId field
+            if product_data.get('userId') != user_id:
+                return {"success": False, "message": "Unauthorized: Product belongs to different user"}
             
             old_quantity = product_data.get('stock_quantity', 0)
             
