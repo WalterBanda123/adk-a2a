@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Dict, Any
 from google.adk.tools import FunctionTool
 
@@ -18,19 +19,40 @@ def create_get_user_tool(user_service):
             Dict containing user information, store context, and preferences
         """
         try:
-            # Get user profile information
-            user_profile = await user_service.get_user_info(user_id)
+            # Get user profile information with timeout
+            try:
+                user_profile = await asyncio.wait_for(
+                    user_service.get_user_info(user_id), 
+                    timeout=8.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"User info lookup timed out for user_id: {user_id}")
+                user_profile = None
+            except Exception as e:
+                logger.error(f"Error getting user info: {e}")
+                user_profile = None
             
             if not user_profile:
                 return {
                     "success": False,
-                    "message": "User profile not found. This might be a new user who needs to register.",
+                    "message": "User profile not found or database unavailable. This might be a new user who needs to register.",
                     "user_exists": False,
-                    "suggestion": "Please ask the user to provide their name and store information for registration."
+                    "suggestion": "Please ask the user to provide their name and store information for registration.",
+                    "fallback_greeting": f"Welcome! I notice this might be your first time here, or I'm having trouble accessing your profile. Could you please tell me your name and a bit about your business?"
                 }
             
             # Get store information if available
-            store_info = await user_service.get_store_info(user_id)
+            try:
+                store_info = await asyncio.wait_for(
+                    user_service.get_store_info(user_id), 
+                    timeout=8.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Store info lookup timed out for user_id: {user_id}")
+                store_info = None
+            except Exception as e:
+                logger.error(f"Error getting store info: {e}")
+                store_info = None
             
             # Format user information for greeting
             user_name = user_profile.get('name', 'Friend')

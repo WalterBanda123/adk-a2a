@@ -715,8 +715,19 @@ class ProductTransactionHelper:
                 logger.warning("No database connection available for product lookup")
                 return None
             
-            # Get all user's products
-            products = await self.product_service.get_store_products(user_id)
+            # Get all user's products with timeout
+            try:
+                products = await asyncio.wait_for(
+                    self.product_service.get_store_products(user_id),
+                    timeout=10.0  # 10 second timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout getting products for user {user_id}")
+                return None
+            except Exception as e:
+                logger.error(f"Error getting products for user {user_id}: {e}")
+                return None
+                
             if not products:
                 logger.warning(f"No products found for user {user_id}")
                 return None

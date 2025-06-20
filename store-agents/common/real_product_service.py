@@ -66,20 +66,17 @@ class RealProductService:
                 if field not in product_data:
                     return {"success": False, "message": f"Missing required field: {field}"}
             
-            # Add system fields (using standardized userId field only)
             product_data.update({
-                "userId": user_id,  # Primary field for user identification (STANDARDIZED)
+                "userId": user_id, 
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "status": "active"
             })
             
-            # Set defaults for optional fields
             product_data.setdefault("reorder_point", 5)
             product_data.setdefault("unit_of_measure", "units")
             product_data.setdefault("cost_price", 0.0)
             
-            # Add to Firestore
             doc_ref = self.db.collection('products').add(product_data)
             logger.info(f"Added product '{product_data['product_name']}' for user {user_id}")
             
@@ -95,15 +92,12 @@ class RealProductService:
             return {"success": False, "message": f"Failed to add product: {str(e)}"}
 
     async def update_product(self, user_id: str, product_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
-        """Update an existing product"""
         if not self.db:
             return {"success": False, "message": "No database connection"}
         
         try:
-            # Add update timestamp
             updates["updated_at"] = datetime.now().isoformat()
             
-            # Update in Firestore
             product_ref = self.db.collection('products').document(product_id)
             product_doc = product_ref.get()
             
@@ -131,7 +125,6 @@ class RealProductService:
             return {"success": False, "message": f"Failed to update product: {str(e)}"}
 
     async def delete_product(self, user_id: str, product_id: str) -> Dict[str, Any]:
-        """Delete a product (soft delete - mark as inactive)"""
         if not self.db:
             return {"success": False, "message": "No database connection"}
         
@@ -149,7 +142,6 @@ class RealProductService:
             if product_data.get('store_owner_id') != user_id:
                 return {"success": False, "message": "Unauthorized: Product belongs to different user"}
             
-            # Soft delete
             product_ref.update({
                 "status": "inactive",
                 "updated_at": datetime.now().isoformat()
@@ -167,13 +159,11 @@ class RealProductService:
             return {"success": False, "message": f"Failed to delete product: {str(e)}"}
 
     async def get_store_products(self, user_id: str, include_inactive: bool = False) -> Optional[List[Dict[str, Any]]]:
-        """Get all products for a user's store using standardized userId field"""
         try:
             if not self.db:
                 logger.warning("No database connection available")
                 return None
             
-            # Use standardized userId field only
             products = []
             
             try:
@@ -200,7 +190,6 @@ class RealProductService:
             return None
 
     async def update_stock(self, user_id: str, product_id: str, new_quantity: int, movement_type: str = "adjustment") -> Dict[str, Any]:
-        """Update stock quantity for a product"""
         if not self.db:
             return {"success": False, "message": "No database connection"}
         
@@ -215,20 +204,17 @@ class RealProductService:
             if not product_data:
                 return {"success": False, "message": "Invalid product data"}
             
-            # Check authorization using standardized userId field
             if product_data.get('userId') != user_id:
                 return {"success": False, "message": "Unauthorized: Product belongs to different user"}
             
             old_quantity = product_data.get('stock_quantity', 0)
             
-            # Update stock
             product_ref.update({
                 "stock_quantity": new_quantity,
                 "updated_at": datetime.now().isoformat(),
                 "last_restocked": datetime.now().isoformat() if movement_type == "restock" else product_data.get("last_restocked")
             })
             
-            # Log inventory movement
             movement_data = {
                 "product_id": product_id,
                 "user_id": user_id,
@@ -255,7 +241,6 @@ class RealProductService:
             return {"success": False, "message": f"Failed to update stock: {str(e)}"}
 
     async def get_low_stock_products(self, user_id: str, threshold: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
-        """Get products with stock levels below the threshold"""
         try:
             if threshold is None:
                 threshold = self.low_stock_threshold
@@ -282,7 +267,6 @@ class RealProductService:
             return None
 
     async def get_product_analytics(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get product analytics and insights"""
         try:
             products = await self.get_store_products(user_id)
             if products is None:
@@ -301,21 +285,18 @@ class RealProductService:
             }
             
             for product in products:
-                # Category breakdown
                 category = product.get('category', 'Unknown')
                 if category not in analytics['categories']:
                     analytics['categories'][category] = {"count": 0, "value": 0}
                 analytics['categories'][category]["count"] += 1
                 analytics['categories'][category]["value"] += product.get('stock_quantity', 0) * product.get('unit_price', 0)
                 
-                # Brand breakdown
                 brand = product.get('brand', 'Unknown')
                 if brand not in analytics['brands']:
                     analytics['brands'][brand] = {"count": 0, "value": 0}
                 analytics['brands'][brand]["count"] += 1
                 analytics['brands'][brand]["value"] += product.get('stock_quantity', 0) * product.get('unit_price', 0)
                 
-                # Stock status
                 stock_qty = product.get('stock_quantity', 0)
                 reorder_point = product.get('reorder_point', 5)
                 
@@ -333,7 +314,6 @@ class RealProductService:
             return None
 
     async def search_products(self, user_id: str, search_term: str) -> Optional[List[Dict[str, Any]]]:
-        """Search products by name, category, or brand"""
         try:
             products = await self.get_store_products(user_id)
             if products is None:
@@ -343,7 +323,6 @@ class RealProductService:
             matching_products = []
             
             for product in products:
-                # Search in name, category, brand
                 searchable_text = " ".join([
                     product.get('product_name', ''),
                     product.get('category', ''),
@@ -362,7 +341,6 @@ class RealProductService:
             return None
 
     async def import_products_from_csv(self, user_id: str, csv_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Import products from CSV data"""
         if not self.db:
             return {"success": False, "message": "No database connection"}
         
@@ -372,12 +350,10 @@ class RealProductService:
             
             for row_data in csv_data:
                 try:
-                    # Validate required fields
                     if not row_data.get('product_name') or not row_data.get('unit_price'):
                         errors.append(f"Skipping row: missing product_name or unit_price")
                         continue
                     
-                    # Add product
                     result = await self.add_product(user_id, row_data)
                     if result.get("success"):
                         added_count += 1
