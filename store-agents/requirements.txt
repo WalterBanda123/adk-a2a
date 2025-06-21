@@ -1,6 +1,7 @@
 google-generativeai
 google-adk
 google-cloud-vision
+google-cloud-storage
 reportlab
 firebase-admin
 python-dotenv

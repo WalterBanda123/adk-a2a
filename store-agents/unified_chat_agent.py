@@ -16,11 +16,13 @@ sys.path.insert(0, project_root)
 
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 # Import sub-agents
 from agents.product_transaction_agent.agent import ProductTransactionAgent
 from agents.misc_transactions.agent import MiscTransactionsAgent
+from agents.assistant.financial_reporting_subagent import create_financial_reporting_subagent
 
 # Import common services
 from common.user_service import UserService
@@ -55,99 +57,91 @@ class UnifiedChatCoordinator:
         # Initialize sub-agents
         self.product_agent = ProductTransactionAgent()
         self.misc_agent = MiscTransactionsAgent()
+        self.financial_agent = None  # Will be initialized async
         
         # Initialize services
         self.user_service = UserService()
         self.product_service = RealProductService()
         
-        # Intent patterns for routing
-        self.intent_patterns = {
-            'greeting': [
-                r'^hello$', r'^hi$', r'^hey$', r'good morning', r'good afternoon', 
-                r'good evening', r'^greetings$', r'hey there', r'hello there'
-            ],
-            'transaction_confirmation': [
-                r'^confirm\s+[Tt][Xx][Nn]_.*', r'^cancel\s+[Tt][Xx][Nn]_.*', 
-                r'confirm.*transaction', r'cancel.*transaction'
-            ],
-            'product_registration': [
-                r'register.*product', r'add.*product.*image', r'scan.*product',
-                r'new.*product.*photo', r'upload.*product', r'analyze.*image'
-            ],
-            'transaction': [
-                r'sold.*', r'sale.*', r'customer.*bought', r'purchase.*',
-                r'transaction.*', r'receipt.*', r'checkout.*', r'buy.*',
-                r'i.*sold.*', r'we.*sold.*', r'sell.*', r'selling.*'
-            ],
-            'petty_cash': [
-                r'petty.*cash', r'small.*expense', r'office.*supplies',
-                r'withdraw.*cash', r'cash.*expense', r'minor.*expense'
-            ],
-            'owner_drawing': [
-                r'owner.*drawing', r'personal.*withdrawal', r'take.*money',
-                r'withdraw.*personal', r'drawing.*'
-            ],
-            'cash_deposit': [
-                r'deposit.*cash', r'add.*money', r'put.*money', r'cash.*in'
-            ],
-            'inventory_query': [
-                r'stock.*level', r'inventory.*', r'how.*many.*', r'product.*quantity',
-                r'low.*stock', r'out.*of.*stock', r'check.*stock'
-            ],
-            'store_query': [
-                r'store.*info', r'business.*details', r'sales.*summary',
-                r'financial.*report', r'analytics.*'
-            ],
-            'general_help': [
-                r'help.*', r'what.*can.*you.*do', r'commands.*', r'features.*'
-            ]
+        # Agent capabilities - let agents decide what they can handle
+        self.agent_capabilities = {
+            'product_transaction': {
+                'agent': self.product_agent,
+                'description': 'Handles product sales, transactions, receipts, and product registration',
+                'keywords': ['sell', 'sold', 'buy', 'bought', 'transaction', 'receipt', 'customer', 'sale', 'purchase', 'register product', 'scan', 'photo', 'image']
+            },
+            'misc_transactions': {
+                'agent': self.misc_agent, 
+                'description': 'Handles petty cash, owner drawings, deposits, and other financial transactions',
+                'keywords': ['petty cash', 'drawing', 'deposit', 'withdraw', 'expense', 'cash']
+            }
         }
+        
+    async def _ensure_financial_agent(self):
+        """Lazy initialization of financial reporting agent"""
+        if self.financial_agent is None:
+            self.financial_agent = await create_financial_reporting_subagent()
     
-    def detect_intent(self, message: str, has_image: bool = False) -> str:
+    def should_route_to_agent(self, message: str, agent_type: str, has_image: bool = False) -> bool:
         """
-        Detect user intent from message
+        Simple heuristic to determine if message should go to specific agent
         """
         message_lower = message.lower()
         
-        # Image takes priority for product registration
-        if has_image:
-            return 'product_registration'
+        if agent_type == 'product_transaction':
+            # Check if it's about products, sales, transactions, or has an image
+            if has_image:
+                return True
+            keywords = self.agent_capabilities['product_transaction']['keywords']
+            return any(keyword in message_lower for keyword in keywords)
         
-        # Check patterns
-        for intent, patterns in self.intent_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, message_lower):
-                    return intent
+        elif agent_type == 'misc_transactions':
+            keywords = self.agent_capabilities['misc_transactions']['keywords']
+            return any(keyword in message_lower for keyword in keywords)
         
-        # Default to general help
-        return 'general_help'
+        return False
     
-    async def route_to_agent(self, intent: str, message: str, user_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def route_to_agent(self, message: str, user_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Route request to appropriate sub-agent
+        Intelligent agent routing - let agents decide if they can handle the request
         """
         try:
-            if intent == 'greeting':
-                return await self.handle_general_help(message, user_id, context)
+            has_image = bool(context.get('image_data'))
+            message_lower = message.lower()
             
-            elif intent == 'transaction_confirmation':
+            # Handle simple confirmations first
+            if re.match(r'^(confirm|cancel)\s+txn_', message_lower):
                 return await self.handle_transaction_confirmation(message, user_id, context)
             
-            elif intent == 'product_registration':
-                return await self.handle_product_registration(message, user_id, context)
+            # Handle greetings
+            if any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'good morning', 'good afternoon']):
+                return await self.handle_general_help(message, user_id, context)
             
-            elif intent == 'transaction':
-                return await self.handle_transaction(message, user_id, context)
+            # Try product/transaction agent first (handles sales, products, images)
+            if self.should_route_to_agent(message, 'product_transaction', has_image):
+                if has_image:
+                    return await self.handle_product_registration(message, user_id, context)
+                else:
+                    return await self.handle_transaction(message, user_id, context)
             
-            elif intent in ['petty_cash', 'owner_drawing', 'cash_deposit']:
-                return await self.handle_misc_transaction(intent, message, user_id, context)
+            # Try misc transactions agent
+            elif self.should_route_to_agent(message, 'misc_transactions'):
+                # Let the misc agent determine the specific type
+                return await self.handle_misc_transaction('auto', message, user_id, context)
             
-            elif intent == 'inventory_query':
+            # Handle inventory/stock queries
+            elif any(keyword in message_lower for keyword in ['inventory', 'stock', 'products', 'how many']):
                 return await self.handle_inventory_query(message, user_id, context)
             
-            elif intent == 'store_query':
+            # Handle store queries
+            elif any(keyword in message_lower for keyword in ['store info', 'business details', 'store analytics']):
                 return await self.handle_store_query(message, user_id, context)
             
+            # Handle reports
+            elif any(keyword in message_lower for keyword in ['report', 'financial', 'analytics']):
+                return await self.handle_financial_report(message, user_id, context)
+            
+            # Default to general help
             else:
                 return await self.handle_general_help(message, user_id, context)
                 
@@ -280,11 +274,22 @@ class UnifiedChatCoordinator:
                     message = "📊 No analytics data available yet."
             
             else:
-                # General inventory query
+                # General inventory query - get basic product list
                 products = await self.product_service.get_store_products(user_id)
                 if products:
-                    count = len(products)
-                    message = f"📦 You have {count} products in inventory. Use 'low stock' to see items that need restocking, or 'analytics' for detailed insights."
+                    # Create a better formatted response showing actual products
+                    if len(products) <= 5:
+                        # Show all products if there are 5 or fewer
+                        product_list = "\\n".join([
+                            f"• {p.get('product_name', p.get('name', 'Unknown'))} - {p.get('stock_quantity', p.get('quantity', 0))} units"
+                            for p in products
+                        ])
+                        message = f"📦 **Your Current Inventory:**\\n{product_list}\\n\\nAll quantities shown in units/items."
+                    else:
+                        # Show summary if more than 5 products
+                        total_count = len(products)
+                        total_units = sum(p.get('stock_quantity', p.get('quantity', 0)) for p in products)
+                        message = f"📦 **Inventory Summary:**\\n• {total_count} different products\\n• {total_units} total units in stock\\n\\nUse 'low stock' or 'analytics' for detailed views."
                 else:
                     message = "📦 Your inventory is empty. Start by adding products with images!"
             
@@ -347,6 +352,85 @@ class UnifiedChatCoordinator:
             return {
                 "message": f"❌ Error retrieving store information: {str(e)}",
                 "agent_used": "store_manager",
+                "status": "error"
+            }
+    
+    async def handle_financial_report(self, message: str, user_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle financial report generation requests"""
+        try:
+            from agents.assistant.tools.financial_report_tool import generate_financial_report_func
+            from common.financial_service import FinancialService
+            from common.pdf_report_generator import PDFReportGenerator
+            
+            # Initialize services
+            financial_service = FinancialService()
+            pdf_generator = PDFReportGenerator()
+            
+            # Extract period from message (default to today)
+            period = "today"
+            if "month" in message.lower():
+                period = "this month"
+            elif "week" in message.lower():
+                period = "this week"
+            elif "year" in message.lower():
+                period = "this year"
+            
+            # Generate the report
+            result = await generate_financial_report_func(
+                user_id=user_id,
+                period=period,
+                include_insights=True,
+                financial_service=financial_service,
+                pdf_generator=pdf_generator,
+                user_service=self.user_service
+            )
+            
+            if result.get('success'):
+                filename = result.get('filename', '')
+                firebase_url = result.get('firebase_url')
+                download_url = result.get('download_url') or f"/download/{filename}"
+                
+                message_text = f"📊 **Financial Report Generated Successfully!**\n\n"
+                
+                if filename:
+                    message_text += f"📄 **File:** {filename}\n"
+                    message_text += f"🔗 **Download:** {download_url}\n\n"
+                
+                # Add summary if available
+                if result.get('summary'):
+                    summary = result['summary']
+                    message_text += f"💰 **Revenue:** ${summary.get('total_revenue', 0):.2f}\n"
+                    message_text += f"💸 **Expenses:** ${summary.get('total_expenses', 0):.2f}\n"
+                    message_text += f"💵 **Net Profit:** ${summary.get('net_profit', 0):.2f}\n"
+                    message_text += f"📦 **Transactions:** {summary.get('transaction_count', 0)}\n\n"
+                
+                message_text += "✅ Your PDF report is ready for download!"
+                
+                return {
+                    "message": message_text,
+                    "agent_used": "financial_reporting",
+                    "status": "success",
+                    "data": {
+                        "filename": filename,
+                        "download_url": download_url,
+                        "firebase_url": firebase_url,
+                        "summary": result.get('summary', {}),
+                        "period": period
+                    }
+                }
+            else:
+                return {
+                    "message": f"❌ Error generating report: {result.get('error', 'Unknown error')}",
+                    "agent_used": "financial_reporting",
+                    "status": "error",
+                    "data": {"error": result.get('error', 'Unknown error')}
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in financial report handler: {e}")
+            return {
+                "message": f"❌ Error generating financial report: {str(e)}",
+                "agent_used": "financial_reporting",
                 "status": "error"
             }
     
@@ -429,7 +513,7 @@ Just tell me what you need! 😊"""
 • "Scan this item" → Image analysis
 
 💰 **Transactions:**
-• "Sold 2 apples at $1 each" → Process sales
+• "Sold 2 apples at $1.50 each" → Process sales
 • "Customer bought bread and milk" → Create receipts
 • "Transaction for John" → Named customer sales
 
@@ -556,11 +640,7 @@ Just type naturally - I'll understand what you need! 😊
                     session_id=request.session_id
                 )
             
-            # Detect intent
-            has_image = bool(request.image_data)
-            intent = self.detect_intent(request.message, has_image)
-            
-            logger.info(f"Processing message: '{request.message}' | Intent: {intent} | User: {user_id}")
+            logger.info(f"Processing message: '{request.message}' | User: {user_id}")
             
             # Prepare context
             context = dict(request.context)
@@ -571,8 +651,8 @@ Just type naturally - I'll understand what you need! 😊
             if request.session_id:
                 context['session_id'] = request.session_id
             
-            # Route to appropriate agent
-            result = await self.route_to_agent(intent, request.message, user_id, context)
+            # Route to appropriate agent using simplified routing
+            result = await self.route_to_agent(request.message, user_id, context)
             
             return ChatResponse(
                 message=result["message"],
@@ -639,6 +719,31 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "Store Assistant"}
 
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    """Redirect to Firebase Storage for downloads (legacy endpoint for backward compatibility)"""
+    try:
+        from fastapi.responses import JSONResponse, RedirectResponse
+        
+        # Extract components from filename to help identify the report
+        import re
+        
+        # Check if this is a financial report 
+        is_financial = bool(re.search(r'(Business|Financial|Sales)', filename, re.IGNORECASE))
+        report_type = "financial" if is_financial else "unknown"
+        
+        # Return a clear message about using Firebase URLs instead
+        return JSONResponse({
+            "error": "Local file access deprecated",
+            "message": "Reports are now stored in Firebase Storage for secure access.",
+            "help": "Please use the firebase_url from the report generation response.",
+            "action_required": "Update your frontend to use the firebase_url for accessing reports.",
+            "report_type": report_type,
+            "storage_location": "firebase"
+        }, status_code=410)  # 410 Gone - resource no longer available
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/agents")
 async def list_agents():
     """List available sub-agents and their capabilities"""
@@ -663,4 +768,4 @@ async def list_agents():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8003)

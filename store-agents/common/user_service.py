@@ -60,16 +60,8 @@ class UserService:
                     logger.error("Database connection not available for user data fetch")
                     return None
                     
-                # Strategy 1: Try users collection first
-                user_ref = self.db.collection('users').document(user_id)
-                user_doc = await asyncio.get_event_loop().run_in_executor(None, user_ref.get)
-                
-                if user_doc.exists:
-                    user_data = user_doc.to_dict()
-                    logger.info(f"Retrieved user data from users collection for user_id: {user_id}")
-                    return user_data
-                
-                # Strategy 2: Try user_profiles collection by user_id field (note: double 'i')
+                # Strategy 1: PRIMARY - Query user_profiles collection by user_id field (CORRECT per reference)
+                logger.info(f"Querying user_profiles collection with user_id field: {user_id}")
                 user_profiles_ref = self.db.collection('user_profiles').where('user_id', '==', user_id).limit(1)
                 user_profiles = await asyncio.get_event_loop().run_in_executor(None, user_profiles_ref.get)
                 
@@ -79,23 +71,36 @@ class UserService:
                         logger.warning(f"User profile document has no data for user_id: {user_id}")
                         return None
                         
-                    logger.info(f"Retrieved user data from user_profiles collection for user_id: {user_id}")
+                    logger.info(f"✅ Retrieved user data from user_profiles collection using user_id field: {user_id}")
                     user_data = {
                         "name": profile_data.get("name", f"User {user_id}"),
                         "email": profile_data.get("email", f"{user_id}@example.com"),
                         "phone": profile_data.get("phone", "+263000000000"),
                         "language_preference": profile_data.get("language_preference", "English"),
                         "location": profile_data.get("location", "Zimbabwe"),
-                        "user_id": profile_data.get("user_id", user_id),  # Use user_id field
+                        "user_id": profile_data.get("user_id", user_id),
                         "created_at": profile_data.get("createdAt"),
                         "business_owner": profile_data.get("business_owner", False),
                         "preferred_currency": profile_data.get("preferred_currency", "USD"),
                         "city": profile_data.get("city", "Unknown"),
-                        "country": profile_data.get("country", "Zimbabwe")
+                        "country": profile_data.get("country", "Zimbabwe"),
+                        "business_name": profile_data.get("business_name", profile_data.get("name", "My Business")),
+                        "business_type": profile_data.get("business_type", "General Store")
                     }
                     return user_data
 
-                # Strategy 3: Try profiles collection by user_id field (fallback)
+                # Strategy 2: FALLBACK - Try user_profiles with user_id as document ID
+                logger.info(f"Fallback: Trying user_profiles with user_id as document ID: {user_id}")
+                user_ref = self.db.collection('user_profiles').document(user_id)
+                user_doc = await asyncio.get_event_loop().run_in_executor(None, user_ref.get)
+                
+                if user_doc.exists:
+                    user_data = user_doc.to_dict()
+                    logger.info(f"✅ Retrieved user data from user_profiles document for user_id: {user_id}")
+                    return user_data
+
+                # Strategy 3: LEGACY - Try profiles collection by user_id field (fallback)
+                logger.info(f"Legacy fallback: Trying profiles collection with user_id field: {user_id}")
                 profiles_ref = self.db.collection('profiles').where('user_id', '==', user_id).limit(1)
                 profiles = await asyncio.get_event_loop().run_in_executor(None, profiles_ref.get)
                 
