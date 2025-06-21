@@ -65,10 +65,19 @@ class FirebaseStorageService:
                         logger.warning(f"Could not read project_id from credentials: {e}")
                 
                 if project_id:
-                    bucket_name = f"{project_id}.appspot.com"
+                    # Try the new Firebase Storage bucket format first
+                    bucket_name = f"{project_id}.firebasestorage.app"
                     logger.info(f"Connecting to bucket: {bucket_name}")
-                    self.bucket = firebase_storage.bucket(bucket_name, app=app)
-                    logger.info(f"✅ Firebase Storage connected to bucket: {self.bucket.name}")
+                    try:
+                        self.bucket = firebase_storage.bucket(bucket_name, app=app)
+                        logger.info(f"✅ Firebase Storage connected to bucket: {self.bucket.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to connect to {bucket_name}, trying appspot.com format: {e}")
+                        # Fall back to legacy appspot.com format
+                        bucket_name = f"{project_id}.appspot.com"
+                        logger.info(f"Trying legacy bucket format: {bucket_name}")
+                        self.bucket = firebase_storage.bucket(bucket_name, app=app)
+                        logger.info(f"✅ Firebase Storage connected to bucket: {self.bucket.name}")
                 else:
                     logger.error("Could not determine project_id for bucket name")
                     self.bucket = None
@@ -100,10 +109,10 @@ class FirebaseStorageService:
                 logger.warning("Firebase Storage not available, using local storage fallback")
                 return await self._local_storage_fallback(file_path, report_type)
             
-            # Create storage path with user ID prefix
+            # Create storage path matching the URL structure you provided
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = os.path.basename(file_path)
-            storage_path = f"users/{self.user_id}/reports/{report_type}/{timestamp}_{filename}"
+            storage_path = f"reports/{self.user_id}/{report_type}/{filename}"
             
             # Upload file to Firebase Storage
             blob = self.bucket.blob(storage_path)

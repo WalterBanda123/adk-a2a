@@ -4,7 +4,7 @@
 # Starts the consolidated chat interface that handles all interactions
 
 echo "🚀 Starting Unified Store Assistant..."
-echo "📍 Server will be available at: http://localhost:8000"
+echo "📍 Server will be available at: http://localhost:8003"
 echo "📋 Single /run endpoint handles all chat interactions:"
 echo "   • Product registration (with images)"
 echo "   • Sales transactions" 

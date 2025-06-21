@@ -416,6 +416,11 @@ class ProductTransactionHelper:
         for old, new in replacements.items():
             cleaned = cleaned.replace(old, new)
         
+        # Fix missing quantity: if message starts with product name @ price, add "1 " at the beginning
+        import re
+        if re.match(r'^[a-zA-Z].*@\s*\d+', cleaned.strip()):
+            cleaned = "1 " + cleaned
+        
         return cleaned
     
     def _parse_structured_format(self, message: str) -> Dict[str, Any]:
@@ -512,6 +517,9 @@ class ProductTransactionHelper:
             r'(\d+)\s+((?:\w+\s*){1,5})\s+@\s*(\d+(?:\.\d+)?)',  # "2 mazoe orange crush @ 3.50"
             r'(\d+)\s+((?:\w+\s*){1,5})\s+(?:by|for|at)\s+(\d+(?:\.\d+)?)',  # "2 mazoe orange crush by 3.50"
             r'(\d+)\s+((?:\w+\s*){1,5})(?:\s*,|$)',  # "2 mazoe orange crush," or end of string
+            # NEW: Handle cases with no explicit quantity (default to 1)
+            r'((?:\w+\s*){1,5})\s+@\s*(\d+(?:\.\d+)?)',  # "huletts sugar @ 3.4" (quantity = 1)
+            r'((?:\w+\s*){1,5})\s+(?:by|for|at)\s+(\d+(?:\.\d+)?)',  # "huletts sugar by 3.4" (quantity = 1)
         ]
         
         # First, split by common delimiters
@@ -526,19 +534,28 @@ class ProductTransactionHelper:
                 matches = re.finditer(pattern, segment, re.IGNORECASE)
                 for match in matches:
                     try:
-                        quantity = int(match.group(1))
-                        raw_name = match.group(2).strip()
+                        groups = match.groups()
+                        
+                        # Handle patterns with explicit quantity vs implicit quantity=1
+                        if len(groups) == 3:  # Standard pattern: (quantity, name, price)
+                            quantity = int(groups[0])
+                            raw_name = groups[1].strip()
+                            unit_price = float(groups[2]) if groups[2] else None
+                        elif len(groups) == 2:  # No explicit quantity: (name, price)
+                            quantity = 1  # Default to 1 when no quantity specified
+                            raw_name = groups[0].strip()
+                            unit_price = float(groups[1]) if groups[1] else None
+                        else:
+                            continue
                         
                         # Clean up the product name - remove units/descriptors
                         name = self._clean_product_name_from_parse(raw_name)
                         
-                        # Check if price was captured
-                        if len(match.groups()) >= 3 and match.group(3):
-                            unit_price = float(match.group(3))
+                        # Calculate line total if price is available
+                        if unit_price is not None:
                             line_total = quantity * unit_price
                             price_source = "provided"
                         else:
-                            unit_price = None
                             line_total = None
                             price_source = "database"
                         

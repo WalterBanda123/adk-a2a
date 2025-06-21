@@ -10,6 +10,12 @@ import asyncio
 from typing import Dict, Any, Optional, List
 import re
 
+# Configure logging for debugging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
@@ -91,13 +97,22 @@ class UnifiedChatCoordinator:
         if agent_type == 'product_transaction':
             # Check if it's about products, sales, transactions, or has an image
             if has_image:
+                logger.info(f"Routing to product_transaction (has_image=True): {message}")
                 return True
             keywords = self.agent_capabilities['product_transaction']['keywords']
-            return any(keyword in message_lower for keyword in keywords)
+            matches = [keyword for keyword in keywords if keyword in message_lower]
+            if matches:
+                logger.info(f"Routing to product_transaction (matches: {matches}): {message}")
+                return True
+            return False
         
         elif agent_type == 'misc_transactions':
             keywords = self.agent_capabilities['misc_transactions']['keywords']
-            return any(keyword in message_lower for keyword in keywords)
+            matches = [keyword for keyword in keywords if keyword in message_lower]
+            if matches:
+                logger.info(f"Routing to misc_transactions (matches: {matches}): {message}")
+                return True
+            return False
         
         return False
     
@@ -109,40 +124,51 @@ class UnifiedChatCoordinator:
             has_image = bool(context.get('image_data'))
             message_lower = message.lower()
             
+            logger.info(f"Routing message: '{message}' (has_image: {has_image})")
+            
             # Handle simple confirmations first
             if re.match(r'^(confirm|cancel)\s+txn_', message_lower):
+                logger.info("Routing to transaction confirmation handler")
                 return await self.handle_transaction_confirmation(message, user_id, context)
             
             # Handle greetings
             if any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'good morning', 'good afternoon']):
+                logger.info("Routing to general help (greeting)")
                 return await self.handle_general_help(message, user_id, context)
             
             # Try product/transaction agent first (handles sales, products, images)
             if self.should_route_to_agent(message, 'product_transaction', has_image):
                 if has_image:
+                    logger.info("Routing to product registration (image)")
                     return await self.handle_product_registration(message, user_id, context)
                 else:
+                    logger.info("Routing to transaction handler")
                     return await self.handle_transaction(message, user_id, context)
             
             # Try misc transactions agent
             elif self.should_route_to_agent(message, 'misc_transactions'):
+                logger.info("Routing to misc transactions")
                 # Let the misc agent determine the specific type
                 return await self.handle_misc_transaction('auto', message, user_id, context)
             
             # Handle inventory/stock queries
             elif any(keyword in message_lower for keyword in ['inventory', 'stock', 'products', 'how many']):
+                logger.info("Routing to inventory query")
                 return await self.handle_inventory_query(message, user_id, context)
             
             # Handle store queries
             elif any(keyword in message_lower for keyword in ['store info', 'business details', 'store analytics']):
+                logger.info("Routing to store query")
                 return await self.handle_store_query(message, user_id, context)
             
             # Handle reports
             elif any(keyword in message_lower for keyword in ['report', 'financial', 'analytics']):
+                logger.info("Routing to financial report")
                 return await self.handle_financial_report(message, user_id, context)
             
             # Default to general help
             else:
+                logger.info("Routing to general help (default)")
                 return await self.handle_general_help(message, user_id, context)
                 
         except Exception as e:
@@ -196,6 +222,8 @@ class UnifiedChatCoordinator:
     async def handle_transaction(self, message: str, user_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle sales transactions"""
         try:
+            logger.info(f"Processing transaction: {message} for user {user_id}")
+            
             # Use product transaction agent for chat-based transactions
             from agents.product_transaction_agent.models import TransactionRequest
             
@@ -211,19 +239,26 @@ class UnifiedChatCoordinator:
             # Use chat_response if available (contains formatted confirmation), otherwise use message
             response_message = result.chat_response if result.chat_response else result.message
             
+            # Clean up data - remove technical fields
+            clean_data = {}
+            if result.receipt:
+                clean_data["receipt"] = result.receipt.dict()
+            if result.frontend_receipt:
+                clean_data["frontend_receipt"] = result.frontend_receipt.dict()
+            if result.pending_transaction_id:
+                clean_data["pending_transaction_id"] = result.pending_transaction_id
+            if result.confirmation_required:
+                clean_data["confirmation_required"] = result.confirmation_required
+            
             return {
                 "message": response_message,
                 "agent_used": "transaction_processor",
                 "status": "success" if result.success else "error",
-                "data": {
-                    "receipt": result.receipt.dict() if result.receipt else None,
-                    "frontend_receipt": result.frontend_receipt.dict() if result.frontend_receipt else None,
-                    "pending_transaction_id": result.pending_transaction_id,
-                    "confirmation_required": result.confirmation_required
-                }
+                "data": clean_data
             }
             
         except Exception as e:
+            logger.error(f"Error processing transaction: {e}")
             return {
                 "message": f"❌ Error processing transaction: {str(e)}",
                 "agent_used": "transaction_processor", 
@@ -388,13 +423,35 @@ class UnifiedChatCoordinator:
             if result.get('success'):
                 filename = result.get('filename', '')
                 firebase_url = result.get('firebase_url')
-                download_url = result.get('download_url') or f"/download/{filename}"
+                download_url = result.get('download_url')
+                
+                # Check if we're using local storage fallback (URL starts with /)
+                is_local_storage = firebase_url and firebase_url.startswith('/')
+                
+                # Create proper download URLs for frontend
+                if is_local_storage:
+                    # Convert local path to server URL
+                    server_url = f"http://localhost:8003{firebase_url}"
+                    actual_filename = firebase_url.split('/')[-1] if firebase_url else ""
+                else:
+                    # Use Firebase URL as-is
+                    server_url = firebase_url
+                    actual_filename = filename or ""
+                
+                # Ensure we have a proper download URL
+                final_download_url = download_url or server_url or f"/download/{actual_filename}"
                 
                 message_text = f"📊 **Financial Report Generated Successfully!**\n\n"
                 
-                if filename:
-                    message_text += f"📄 **File:** {filename}\n"
-                    message_text += f"🔗 **Download:** {download_url}\n\n"
+                if actual_filename:
+                    message_text += f"📄 **File:** {actual_filename}\n"
+                
+                # Add storage type info for debugging
+                if is_local_storage:
+                    message_text += f"🔗 **Download URL:** {server_url}\n"
+                    message_text += f"⚠️ **Note:** Using local storage (Firebase Storage unavailable)\n\n"
+                else:
+                    message_text += f"🔗 **Firebase URL:** {firebase_url}\n\n"
                 
                 # Add summary if available
                 if result.get('summary'):
@@ -411,9 +468,11 @@ class UnifiedChatCoordinator:
                     "agent_used": "financial_reporting",
                     "status": "success",
                     "data": {
-                        "filename": filename,
-                        "download_url": download_url,
+                        "filename": actual_filename,
+                        "download_url": final_download_url,
                         "firebase_url": firebase_url,
+                        "server_url": server_url,  # Direct server URL for frontend
+                        "storage_type": "local" if is_local_storage else "firebase",
                         "summary": result.get('summary', {}),
                         "period": period
                     }
@@ -560,10 +619,10 @@ Just type naturally - I'll understand what you need! 😊
             cancel_match = re.match(r'^cancel\s+(txn_[a-zA-Z0-9_]+)', message_lower)
             
             if confirm_match:
-                transaction_id = confirm_match.group(1).upper()  # Convert back to uppercase
+                transaction_id = confirm_match.group(1)  # Keep original case
                 action = "confirm"
             elif cancel_match:
-                transaction_id = cancel_match.group(1).upper()  # Convert back to uppercase
+                transaction_id = cancel_match.group(1)  # Keep original case
                 action = "cancel"
             else:
                 return {
@@ -654,11 +713,42 @@ Just type naturally - I'll understand what you need! 😊
             # Route to appropriate agent using simplified routing
             result = await self.route_to_agent(request.message, user_id, context)
             
+            # Clean up response data - remove any technical fields recursively
+            clean_data = result.get("data", {})
+            
+            # Function to recursively clean technical fields
+            def clean_technical_fields(data):
+                if isinstance(data, dict):
+                    # Remove technical fields at this level
+                    technical_fields = ['raw_events', 'usage_metadata', 'invocation_id', 'author', 'actions', 'partial', 'content', 'processing_method']
+                    for field in technical_fields:
+                        data.pop(field, None)
+                    
+                    # Recursively clean nested dictionaries
+                    for key, value in data.items():
+                        if isinstance(value, dict):
+                            clean_technical_fields(value)
+                        elif isinstance(value, list):
+                            for item in value:
+                                if isinstance(item, dict):
+                                    clean_technical_fields(item)
+                elif isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict):
+                            clean_technical_fields(item)
+            
+            # Apply recursive cleaning
+            clean_technical_fields(clean_data)
+            
+            # Log the agent used and cleaned data for debugging
+            logger.info(f"Agent used: {result.get('agent_used', 'unknown')}")
+            logger.info(f"Cleaned data keys: {list(clean_data.keys()) if clean_data else 'empty'}")
+            
             return ChatResponse(
                 message=result["message"],
                 agent_used=result["agent_used"],
                 status=result["status"],
-                data=result.get("data", {}),
+                data=clean_data,
                 session_id=request.session_id
             )
             
@@ -742,6 +832,49 @@ async def download_file(filename: str):
             "storage_location": "firebase"
         }, status_code=410)  # 410 Gone - resource no longer available
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/reports/{user_id}/{report_type}/{filename}")
+async def serve_report_file(user_id: str, report_type: str, filename: str):
+    """Serve report files from local storage when Firebase Storage is unavailable"""
+    try:
+        import os
+        from fastapi.responses import FileResponse
+        
+        # Construct the local file path
+        reports_dir = os.path.join(os.getcwd(), "reports", user_id, report_type)
+        file_path = os.path.join(reports_dir, filename)
+        
+        # Security check: ensure the file path is within the reports directory
+        abs_reports_dir = os.path.abspath(reports_dir)
+        abs_file_path = os.path.abspath(file_path)
+        
+        if not abs_file_path.startswith(abs_reports_dir):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Report file not found")
+        
+        # Determine content type
+        content_type = "application/pdf" if filename.endswith('.pdf') else "application/octet-stream"
+        
+        # Return the file
+        return FileResponse(
+            path=file_path,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving report file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/agents")
