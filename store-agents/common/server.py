@@ -173,36 +173,55 @@ def create_agent_server(
     
     @app.get("/reports")
     async def list_reports():
-        """List available reports from Firebase Storage"""
-        try:
-            # This endpoint now needs to query Firebase Storage instead of local files
-            from ..common.firebase_storage_service import FirebaseStorageService
-            
-            # Return a message directing to use Firebase Storage URLs
-            return {
-                "message": "Reports are now stored exclusively in Firebase Storage",
-                "info": "Please use the financial_report_tool to generate reports and access them via the returned firebase_url",
-                "reports": [] # Empty array as we're not returning local files anymore
-            }
-        except Exception as e:
-            return {
-                "error": str(e),
-                "message": "Failed to list reports",
-                "reports": []
-            }
+        """List available PDF reports"""
+        # Get the reports directory path
+        current_frame = inspect.currentframe()
+        if current_frame is None:
+            raise RuntimeError("Failed to retrieve the current frame.")
+        reports_dir = os.path.join(os.path.dirname(os.path.dirname(inspect.getfile(current_frame))), "reports")
+        reports = []
+        if os.path.exists(reports_dir):
+            for file in os.listdir(reports_dir):
+                if file.endswith('.pdf'):
+                    file_path = os.path.join(reports_dir, file)
+                    stat = os.stat(file_path)
+                    reports.append({
+                        "filename": file,
+                        "size": stat.st_size,
+                        "created": stat.st_ctime,
+                        "download_url": f"/reports/{file}"
+                    })
+        
+        return {"reports": reports}
     
     @app.get("/reports/{filename}/download")
     async def get_pdf_base64(filename: str):
-        """Direct to Firebase Storage for PDF download/display"""
-        # This endpoint now directs users to Firebase Storage
-        try:
-            return {
-                "message": "Reports are now stored exclusively in Firebase Storage",
-                "info": "Please use the financial_report_tool to generate reports and access them via the returned firebase_url",
-                "redirect": f"Please use the firebase_url provided in the report generation response"
-            }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        """Get PDF content as base64 for direct download/display"""
+        # Get the reports directory path
+        current_frame = inspect.currentframe()
+        if current_frame is None:
+            raise RuntimeError("Failed to retrieve the current frame.")
+        reports_dir = os.path.join(os.path.dirname(os.path.dirname(inspect.getfile(current_frame))), "reports")
+        file_path = os.path.join(reports_dir, filename)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="PDF file not found")
+        
+        if not filename.endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+        # Read PDF file and encode as base64
+        with open(file_path, 'rb') as pdf_file:
+            pdf_content = pdf_file.read()
+            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+        
+        return {
+            "filename": filename,
+            "content_type": "application/pdf",
+            "size": len(pdf_content),
+            "data": pdf_base64,
+            "download_url": f"data:application/pdf;base64,{pdf_base64}"
+        }
     
     if endpoints:
         for path, handler in endpoints.items():

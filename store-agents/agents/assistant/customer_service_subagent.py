@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from .tools.get_products_tool import create_get_products_tool
 from .tools.get_user_tool import create_get_user_tool
-from common.real_product_service import RealProductService
+from common.product_service import ProductService
 from common.user_service import UserService
 
 async def create_customer_service_subagent():
@@ -18,7 +18,7 @@ async def create_customer_service_subagent():
     llm = LiteLlm(model="gemini/gemini-1.5-flash-latest", api_key=os.environ.get("GOOGLE_API_KEY"))
     
     # Initialize services
-    product_service = RealProductService()
+    product_service = ProductService()
     user_service = UserService()
     
     # Create tools

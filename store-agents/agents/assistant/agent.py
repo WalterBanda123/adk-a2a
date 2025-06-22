@@ -144,10 +144,7 @@ async def create_main_agent():
             "5. MULTILINGUAL SUPPORT: Support English, Shona, and Ndebele\n\n"
             
             "🎪 SPECIAL INSTRUCTIONS:\n"
-            "- CRITICAL: The user_id is provided at the start of each message. Always extract it and pass it to sub-agents.\n"
             "- Always start by delegating to User Greeting Agent for personalization\n"
-            "- When delegating to User Greeting Agent, make sure to provide the user_id from the message\n"
-            "- For transaction requests (like 'I sold 2 mazoe'), delegate to Product Transaction Agent with user_id\n"
             "- For report requests, ask about time periods if not specified\n"
             "- When Financial Reporting Agent creates PDFs, provide download links\n"
             "- Encourage users and celebrate their business successes\n"

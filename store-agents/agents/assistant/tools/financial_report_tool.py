@@ -1,13 +1,10 @@
 import os
 import json
 import base64
-import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 from google.adk.tools import FunctionTool
 import sys
-
-logger = logging.getLogger(__name__)
 
 # Add the parent directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -15,7 +12,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 from common.financial_service import FinancialService
 from common.pdf_report_generator import PDFReportGenerator
 from common.user_service import UserService
-from common.firebase_storage_service import FirebaseStorageService
 
 async def generate_financial_report_func(
     user_id: str, 
@@ -49,9 +45,6 @@ async def generate_financial_report_func(
                 "message": "User service is required but not provided"
             }
 
-        # Initialize Firebase Storage Service
-        firebase_storage = FirebaseStorageService(user_id)
-
         # Parse the period to get start and end dates
         start_date, end_date = financial_service.parse_date_period(period)
         
@@ -76,8 +69,9 @@ async def generate_financial_report_func(
                 "message": "Failed to retrieve financial data"
             }
         
-        # Use a temporary directory for the PDF file
-        import tempfile
+        # Create reports directory if it doesn't exist
+        reports_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
         
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -86,10 +80,7 @@ async def generate_financial_report_func(
         safe_business_name = safe_business_name.replace(' ', '_')
         
         filename = f"{safe_business_name}_{period.replace(' ', '_')}_{timestamp}.pdf"
-        
-        # Create a temporary file
-        temp_dir = tempfile.gettempdir()
-        output_path = os.path.join(temp_dir, filename)
+        output_path = os.path.join(reports_dir, filename)
         
         # Generate the PDF report
         # Handle case where store_info might be None
@@ -110,39 +101,29 @@ async def generate_financial_report_func(
                 "message": "Failed to generate PDF report"
             }
         
-        # Upload the PDF report to Firebase Storage
-        upload_result = await firebase_storage.upload_report(output_path, report_type="financial")
-        
-        if not upload_result.get("success"):
-            return {
-                "success": False,
-                "error": upload_result.get("error", "File upload failed"),
-                "message": "Failed to upload PDF report to Firebase Storage"
-            }
-        
-        # Get the public URL of the uploaded PDF
-        firebase_url = upload_result.get("public_url") if upload_result and upload_result.get("success") else None
-        
-        # Clean up temporary file after successful upload
-        if firebase_url and os.path.exists(output_path):
-            try:
-                os.remove(output_path)
-                logger.info(f"Temporary file {output_path} removed successfully")
-            except Exception as e:
-                logger.warning(f"Failed to remove temporary file {output_path}: {e}")
-        
-        # Both download_url and firebase_url should be the same Firebase URL
-        download_url = firebase_url
-        
-        # Prepare summary with just the necessary information (metrics for logging)
+        # Prepare summary for the agent response
         metrics = financial_data.get('data', {}).get('metrics', {})
         
-        # Create a simple summary for status messages
+        # Create a human-friendly summary
         summary = {
-            "business_name": business_name,
+            "report_generated": True,
+            "file_path": output_path,
+            "filename": filename,
+            "download_url": f"/reports/{filename}",
             "period": period,
-            "download_url": download_url,
-            "firebase_url": firebase_url
+            "business_name": business_name,
+            "owner_name": user_info.get('name', 'Business Owner'),
+            "key_metrics": {
+                "total_sales": f"${metrics.get('total_sales', 0):,.2f}",
+                "total_expenses": f"${metrics.get('total_expenses', 0):,.2f}",
+                "profit_loss": f"${metrics.get('profit_loss', 0):,.2f}",
+                "profit_margin": f"{metrics.get('profit_margin', 0):.1f}%",
+                "transaction_count": metrics.get('sales_count', 0)
+            },
+            "date_range": {
+                "start": start_date.strftime("%Y-%m-%d"),
+                "end": end_date.strftime("%Y-%m-%d")
+            }
         }
         
         # Quick business health assessment
@@ -157,28 +138,21 @@ async def generate_financial_report_func(
             summary["business_status"] = "Break-even"
             summary["status_message"] = "Your business broke even during this period."
         
-        # Create a user-friendly message for the frontend
-        # Make sure the message only references the Firebase URL
-        status_msg = summary.get('status_message', '')
+        # Read the generated PDF and include as base64 for direct download
+        try:
+            with open(output_path, 'rb') as pdf_file:
+                pdf_content = pdf_file.read()
+                pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+                summary["pdf_content"] = pdf_base64
+                summary["pdf_size"] = len(pdf_content)
+                summary["direct_download_url"] = f"data:application/pdf;base64,{pdf_base64}"
+        except Exception as e:
+            print(f"Warning: Could not read PDF file for base64 encoding: {e}")
         
-        # Create a user-friendly message that only mentions the Firebase URL
-        user_message = (
-            f"✅ Financial report generated successfully! {status_msg}\n\n"
-            f"Your report is available for viewing and download at this Firebase URL: {firebase_url}\n\n"
-            f"IMPORTANT: Please use the firebase_url for accessing your report. This URL works directly in browsers "
-            f"and with download managers."
-        )
-        
-        # Return only the essential fields needed by the frontend
-        # Ensure both download_url and firebase_url are the Firebase URL
-        # and message contains user-friendly information
         return {
             "success": True,
-            "download_url": firebase_url,  # Firebase URL for backward compatibility
-            "firebase_url": firebase_url,  # Firebase URL is the primary access method
-            "message": user_message,
-            "report_type": "financial",
-            "storage_location": "firebase"  # Flag to indicate this is in Firebase Storage
+            "data": summary,
+            "message": f"✅ Financial report generated successfully! Download your PDF report at: /reports/{filename}\n\n📊 Quick Summary:\n{summary.get('status_message', '')} The detailed report contains comprehensive analysis and insights for {period}."
         }
         
     except Exception as e:

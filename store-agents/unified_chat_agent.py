@@ -74,7 +74,7 @@ class UnifiedChatCoordinator:
             'product_transaction': {
                 'agent': self.product_agent,
                 'description': 'Handles product sales, transactions, receipts, and product registration',
-                'keywords': ['sell', 'sold', 'buy', 'bought', 'transaction', 'receipt', 'customer', 'sale', 'purchase', 'register product', 'scan', 'photo', 'image']
+                'keywords': ['sell', 'sold', 'buy', 'bought', 'transaction', 'receipt', 'customer', 'purchase', 'register product', 'scan', 'photo', 'image']
             },
             'misc_transactions': {
                 'agent': self.misc_agent, 
@@ -100,7 +100,15 @@ class UnifiedChatCoordinator:
                 logger.info(f"Routing to product_transaction (has_image=True): {message}")
                 return True
             keywords = self.agent_capabilities['product_transaction']['keywords']
-            matches = [keyword for keyword in keywords if keyword in message_lower]
+            # Use word boundaries to avoid partial matches (e.g., "sale" shouldn't match "sales")
+            import re
+            matches = []
+            for keyword in keywords:
+                # Use word boundaries to match whole words only
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, message_lower):
+                    matches.append(keyword)
+            
             if matches:
                 logger.info(f"Routing to product_transaction (matches: {matches}): {message}")
                 return True
@@ -108,7 +116,14 @@ class UnifiedChatCoordinator:
         
         elif agent_type == 'misc_transactions':
             keywords = self.agent_capabilities['misc_transactions']['keywords']
-            matches = [keyword for keyword in keywords if keyword in message_lower]
+            # Use word boundaries for misc transactions too
+            import re
+            matches = []
+            for keyword in keywords:
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                if re.search(pattern, message_lower):
+                    matches.append(keyword)
+            
             if matches:
                 logger.info(f"Routing to misc_transactions (matches: {matches}): {message}")
                 return True
@@ -136,7 +151,29 @@ class UnifiedChatCoordinator:
                 logger.info("Routing to general help (greeting)")
                 return await self.handle_general_help(message, user_id, context)
             
-            # Try product/transaction agent first (handles sales, products, images)
+            # Handle reports FIRST and EXPLICITLY (highest priority to avoid conflicts)
+            # Check for any report-related keywords
+            report_keywords = ['report', 'financial', 'analytics', 'generate report', 'sales report', 'yesterday', 'last week', 'last month', 'generate a report']
+            if any(keyword in message_lower for keyword in report_keywords):
+                logger.info(f"Routing to financial report (matched report keywords)")
+                return await self.handle_financial_report(message, user_id, context)
+            
+            # Handle inventory/stock queries (before product transaction to avoid confusion)
+            if any(keyword in message_lower for keyword in ['inventory', 'stock', 'how many products', 'low stock', 'out of stock']):
+                logger.info("Routing to inventory query")
+                return await self.handle_inventory_query(message, user_id, context)
+            
+            # Handle store queries
+            if any(keyword in message_lower for keyword in ['store info', 'business details', 'store analytics']):
+                logger.info("Routing to store query")
+                return await self.handle_store_query(message, user_id, context)
+            
+            # Try misc transactions agent (before product transactions to avoid confusion)
+            if self.should_route_to_agent(message, 'misc_transactions'):
+                logger.info("Routing to misc transactions")
+                return await self.handle_misc_transaction('auto', message, user_id, context)
+            
+            # Try product/transaction agent (handles direct sales transactions, not reports)
             if self.should_route_to_agent(message, 'product_transaction', has_image):
                 if has_image:
                     logger.info("Routing to product registration (image)")
@@ -145,31 +182,9 @@ class UnifiedChatCoordinator:
                     logger.info("Routing to transaction handler")
                     return await self.handle_transaction(message, user_id, context)
             
-            # Try misc transactions agent
-            elif self.should_route_to_agent(message, 'misc_transactions'):
-                logger.info("Routing to misc transactions")
-                # Let the misc agent determine the specific type
-                return await self.handle_misc_transaction('auto', message, user_id, context)
-            
-            # Handle inventory/stock queries
-            elif any(keyword in message_lower for keyword in ['inventory', 'stock', 'products', 'how many']):
-                logger.info("Routing to inventory query")
-                return await self.handle_inventory_query(message, user_id, context)
-            
-            # Handle store queries
-            elif any(keyword in message_lower for keyword in ['store info', 'business details', 'store analytics']):
-                logger.info("Routing to store query")
-                return await self.handle_store_query(message, user_id, context)
-            
-            # Handle reports
-            elif any(keyword in message_lower for keyword in ['report', 'financial', 'analytics']):
-                logger.info("Routing to financial report")
-                return await self.handle_financial_report(message, user_id, context)
-            
             # Default to general help
-            else:
-                logger.info("Routing to general help (default)")
-                return await self.handle_general_help(message, user_id, context)
+            logger.info("Routing to general help (default)")
+            return await self.handle_general_help(message, user_id, context)
                 
         except Exception as e:
             logger.error(f"Error routing to agent: {e}")
@@ -403,12 +418,22 @@ class UnifiedChatCoordinator:
             
             # Extract period from message (default to today)
             period = "today"
-            if "month" in message.lower():
+            if "month" in message.lower() or "monthly" in message.lower():
                 period = "this month"
-            elif "week" in message.lower():
+            elif "week" in message.lower() or "weekly" in message.lower():
                 period = "this week"
-            elif "year" in message.lower():
+            elif "year" in message.lower() or "yearly" in message.lower() or "annual" in message.lower():
                 period = "this year"
+            elif "yesterday" in message.lower():
+                period = "yesterday"
+            elif "last week" in message.lower():
+                period = "last week"
+            elif "last month" in message.lower():
+                period = "last month"
+            elif "last year" in message.lower():
+                period = "last year"
+            elif "last two days" in message.lower() or "past two days" in message.lower():
+                period = "last two days"
             
             # Generate the report
             result = await generate_financial_report_func(
@@ -441,17 +466,11 @@ class UnifiedChatCoordinator:
                 # Ensure we have a proper download URL
                 final_download_url = download_url or server_url or f"/download/{actual_filename}"
                 
-                message_text = f"📊 **Financial Report Generated Successfully!**\n\n"
+                # Create user-friendly message without URLs
+                message_text = f"� **Financial Report Generated Successfully!**\n\n"
                 
-                if actual_filename:
-                    message_text += f"📄 **File:** {actual_filename}\n"
-                
-                # Add storage type info for debugging
-                if is_local_storage:
-                    message_text += f"🔗 **Download URL:** {server_url}\n"
-                    message_text += f"⚠️ **Note:** Using local storage (Firebase Storage unavailable)\n\n"
-                else:
-                    message_text += f"🔗 **Firebase URL:** {firebase_url}\n\n"
+                # Add period info
+                message_text += f"� **Period:** {period.title()}\n"
                 
                 # Add summary if available
                 if result.get('summary'):
@@ -461,7 +480,10 @@ class UnifiedChatCoordinator:
                     message_text += f"💵 **Net Profit:** ${summary.get('net_profit', 0):.2f}\n"
                     message_text += f"📦 **Transactions:** {summary.get('transaction_count', 0)}\n\n"
                 
-                message_text += "✅ Your PDF report is ready for download!"
+                if actual_filename:
+                    message_text += f"📄 **Report:** {actual_filename}\n"
+                
+                message_text += "✅ Your PDF report has been generated and is ready for download!"
                 
                 return {
                     "message": message_text,
@@ -712,6 +734,67 @@ Just type naturally - I'll understand what you need! 😊
             
             # Route to appropriate agent using simplified routing
             result = await self.route_to_agent(request.message, user_id, context)
+            
+            # Check if result contains raw agent data and clean it
+            if isinstance(result, dict) and 'raw_events' in result.get('data', {}):
+                logger.warning(f"🔧 DETECTED RAW AGENT RESPONSE - CLEANING IT")
+                # This is a raw agent response - extract and clean it
+                raw_data = result.get('data', {})
+                message_content = ""
+                firebase_url = ""
+                
+                # Extract message from raw_events
+                if 'raw_events' in raw_data and 'content' in raw_data['raw_events']:
+                    content = raw_data['raw_events']['content']
+                    if 'parts' in content and content['parts']:
+                        message_content = content['parts'][0].get('text', '')
+                        logger.info(f"📝 Extracted message content: {message_content[:100]}...")
+                        
+                        # Extract Firebase URL from message
+                        import re
+                        url_pattern = r'https://storage\.googleapis\.com/[^\s]+'
+                        url_match = re.search(url_pattern, message_content)
+                        if url_match:
+                            firebase_url = url_match.group(0)
+                            logger.info(f"🔗 Extracted Firebase URL: {firebase_url}")
+                            # Remove URL from message
+                            message_content = re.sub(url_pattern, '', message_content).strip()
+                
+                # Clean the message and create proper response
+                if firebase_url:
+                    filename = firebase_url.split('/')[-1] if firebase_url else ""
+                    
+                    # Create clean user message
+                    clean_message = "📊 **Financial Report Generated Successfully!**\n\n"
+                    clean_message += "📅 **Period:** Report Generated\n"
+                    
+                    if "broke even" in message_content.lower():
+                        clean_message += "💵 **Status:** Break-even period\n"
+                        clean_message += "💡 **Insight:** Your business balanced expenses and revenue.\n\n"
+                    elif "profit" in message_content.lower():
+                        clean_message += "💰 **Status:** Profitable period\n"
+                        clean_message += "💡 **Insight:** Great job! Your business generated profit.\n\n"
+                    
+                    if filename:
+                        clean_message += f"📄 **Report File:** {filename}\n"
+                    
+                    clean_message += "✅ Your PDF report has been generated and is ready for download!"
+                    
+                    logger.info(f"✅ CLEANED RESPONSE CREATED - URL moved to data field")
+                    
+                    # Return clean response with URL in data field
+                    result = {
+                        "message": clean_message,
+                        "agent_used": "financial_reporting",
+                        "status": "success",
+                        "data": {
+                            "filename": filename,
+                            "firebase_url": firebase_url,
+                            "download_url": firebase_url,
+                            "storage_type": "firebase",
+                            "report_type": "financial"
+                        }
+                    }
             
             # Clean up response data - remove any technical fields recursively
             clean_data = result.get("data", {})
