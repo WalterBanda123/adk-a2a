@@ -1,0 +1,104 @@
+{
+  "country": "Generic",
+  "industry": "grocery",
+  "common_brands": [
+    "Coca Cola",
+    "Pepsi",
+    "Nestle",
+    "Unilever",
+    "P&G",
+    "Hullets"
+  ],
+  "product_categories": {
+    "Beverages": [
+      "Soft Drinks",
+      "Juices",
+      "Water",
+      "Energy Drinks"
+    ],
+    "Dairy": [
+      "Milk",
+      "Cheese",
+      "Yogurt",
+      "Butter"
+    ],
+    "Staples": [
+      "Rice",
+      "Sugar",
+      "Salt",
+      "Flour",
+      "Pasta"
+    ],
+    "Snacks": [
+      "Chips",
+      "Cookies",
+      "Candy",
+      "Nuts"
+    ],
+    "Personal Care": [
+      "Soap",
+      "Shampoo",
+      "Toothpaste"
+    ],
+    "Household": [
+      "Detergent",
+      "Paper Products",
+      "Cleaning"
+    ]
+  },
+  "size_patterns": [
+    "(\\d+(?:\\.\\d+)?)\\s*(ml|l|oz|fl\\.?\\s*oz|liters?|litres?)",
+    "(\\d+(?:\\.\\d+)?)\\s*(kg|g|lbs|oz|grams?|kilograms?)",
+    "(\\d+)\\s*(pack|pieces?)"
+  ],
+  "keywords": {
+    "Beverages": [
+      "drink",
+      "juice",
+      "soda",
+      "water",
+      "coke",
+      "pepsi"
+    ],
+    "Dairy": [
+      "milk",
+      "cheese",
+      "yogurt",
+      "butter"
+    ],
+    "Staples": [
+      "rice",
+      "sugar",
+      "brown sugar", 
+      "white sugar",
+      "salt",
+      "flour",
+      "pasta",
+      "hullets"
+    ],
+    "Snacks": [
+      "chips",
+      "cookie",
+      "candy",
+      "nuts",
+      "snack"
+    ],
+    "Personal Care": [
+      "soap",
+      "shampoo",
+      "toothpaste"
+    ],
+    "Household": [
+      "detergent",
+      "paper",
+      "cleaning",
+      "wash"
+    ]
+  },
+  "confidence_boosters": [
+    "organic",
+    "fresh",
+    "premium",
+    "natural"
+  ]
+}

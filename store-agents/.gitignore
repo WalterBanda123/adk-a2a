@@ -160,6 +160,10 @@ Temporary Items
 
 # Project specific
 firebase-service-account-key.json
+vision-api-service.json
+*-service-account-key.json
+*-api-service.json
+google-cloud-credentials.json
 reports/*.pdf
 data/temp/
 *.log
@@ -172,3 +176,30 @@ tmp/
 *.swp
 *.swo
 *~
+
+# Development and testing
+test_*.sh
+debug_*.py
+*_test_*.py
+test_results/
+test_output/
+.pytest_cache/
+
+# API Keys and Credentials
+*.key
+*.pem
+*.p12
+*.pfx
+config/secrets.json
+secrets/
+credentials/
+
+# IDE and Editor files
+.idea/
+*.sublime-*
+.vscode/settings.json
+.vscode/launch.json
+
+# OS generated files
+Thumbs.db
+ehthumbs.db

@@ -280,22 +280,37 @@ class MiscTransactionsService:
             if not self.db:
                 return []
             
-            # Simple query to avoid index issues - using updated Firestore syntax
+            # Strategy 1: Query by user_id field
             query = self.db.collection('misc_transactions').where('user_id', '==', user_id)
             
             if transaction_type:
                 query = query.where('type', '==', transaction_type)
             
-            # Remove ordering to avoid composite index requirement
             docs = query.get()
-            
             transactions = []
+            
             for doc in docs:
                 if doc.exists:
                     data = doc.to_dict()
                     if data:  # Add null check
                         data['id'] = doc.id
                         transactions.append(data)
+            
+            # Strategy 2: Query by userId field (camelCase) - only if no results from user_id
+            if not transactions:
+                query = self.db.collection('misc_transactions').where('userId', '==', user_id)
+                
+                if transaction_type:
+                    query = query.where('type', '==', transaction_type)
+                
+                docs = query.get()
+                
+                for doc in docs:
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            transactions.append(data)
             
             # Sort manually by created_at or timestamp if available
             transactions.sort(key=lambda x: x.get('created_at') or x.get('timestamp') or x.get('date', ''), reverse=True)
@@ -336,10 +351,14 @@ class MiscTransactionsService:
             if not self.db:
                 return {}
             
-            # Simple query without date filtering to avoid index issues - using updated Firestore syntax
+            # Strategy 1: Query by user_id field
             query = self.db.collection('misc_transactions').where('user_id', '==', user_id)
-            
             docs = query.get()
+            
+            # Strategy 2: Query by userId field (camelCase) - only if no results from user_id
+            if not docs:
+                query = self.db.collection('misc_transactions').where('userId', '==', user_id)
+                docs = query.get()
             
             summary = {
                 "total_withdrawals": 0.0,

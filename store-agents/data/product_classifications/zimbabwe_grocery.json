@@ -1,0 +1,171 @@
+{
+  "country": "Zimbabwe",
+  "industry": "grocery",
+  "common_brands": [
+    "Gold Leaf",
+    "Blue Ribbon", 
+    "Lobels",
+    "Delta",
+    "Dairibord",
+    "Mazoe",
+    "Tanganda",
+    "Cairns",
+    "Olivine",
+    "Tongaat Hulett",
+    "Hullets",
+    "Coca Cola",
+    "Pepsi",
+    "Fanta",
+    "Sprite",
+    "Lake Harvest",
+    "Kapenta"
+  ],
+  "product_categories": {
+    "Beverages": [
+      "Soft Drinks",
+      "Juices",
+      "Water",
+      "Alcoholic",
+      "Energy Drinks"
+    ],
+    "Dairy": [
+      "Milk",
+      "Cheese",
+      "Yogurt",
+      "Butter",
+      "Cream"
+    ],
+    "Staples": [
+      "Mealie Meal",
+      "Rice",
+      "Sugar",
+      "Salt",
+      "Flour"
+    ],
+    "Cooking Essentials": [
+      "Oil",
+      "Spices",
+      "Sauces",
+      "Vinegar"
+    ],
+    "Snacks": [
+      "Chips",
+      "Biscuits",
+      "Sweets",
+      "Nuts"
+    ],
+    "Bakery": [
+      "Bread",
+      "Cakes",
+      "Pastries"
+    ],
+    "Protein": [
+      "Meat",
+      "Fish",
+      "Eggs",
+      "Beans"
+    ],
+    "Personal Care": [
+      "Soap",
+      "Shampoo",
+      "Toothpaste",
+      "Lotion"
+    ],
+    "Household": [
+      "Detergent",
+      "Toilet Paper",
+      "Cleaning Supplies"
+    ]
+  },
+  "size_patterns": [
+    "(\\d+(?:\\.\\d+)?)\\s*(ml|l|liters?|litres?)",
+    "(\\d+(?:\\.\\d+)?)\\s*(kg|g|grams?|kilograms?)",
+    "(\\d+(?:\\.\\d+)?)\\s*(oz|lbs|pounds?)",
+    "(\\d+)\\s*pack",
+    "(\\d+)\\s*pieces?"
+  ],
+  "keywords": {
+    "Beverages": [
+      "drink",
+      "juice",
+      "soda",
+      "water",
+      "beer",
+      "wine",
+      "coke",
+      "pepsi",
+      "fanta"
+    ],
+    "Dairy": [
+      "milk",
+      "cheese",
+      "yogurt",
+      "butter",
+      "cream",
+      "dairibord"
+    ],
+    "Staples": [
+      "mealie",
+      "meal",
+      "rice",
+      "sugar",
+      "brown sugar",
+      "white sugar",
+      "salt",
+      "flour",
+      "grain",
+      "hullets"
+    ],
+    "Cooking Essentials": [
+      "oil",
+      "cooking",
+      "olivine",
+      "sauce",
+      "spice"
+    ],
+    "Snacks": [
+      "chips",
+      "biscuit",
+      "sweet",
+      "candy",
+      "nuts",
+      "snack"
+    ],
+    "Bakery": [
+      "bread",
+      "loaf",
+      "cake",
+      "lobels",
+      "bakery"
+    ],
+    "Protein": [
+      "meat",
+      "fish",
+      "matemba",
+      "chicken",
+      "beef",
+      "egg"
+    ],
+    "Personal Care": [
+      "soap",
+      "shampoo",
+      "toothpaste",
+      "lotion",
+      "cream"
+    ],
+    "Household": [
+      "detergent",
+      "toilet",
+      "paper",
+      "cleaning",
+      "wash"
+    ]
+  },
+  "confidence_boosters": [
+    "zimbabwe",
+    "harare",
+    "bulawayo",
+    "local",
+    "imported"
+  ]
+}

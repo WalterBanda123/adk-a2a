@@ -1,0 +1,11 @@
+{
+  "name": "Product Transaction Agent",
+  "description": "Handles image-based product registration and chat-based transactions",
+  "endpoints": [
+    "run",
+    "analyze_image",
+    "register-product-image",
+    "chat/transaction"
+  ],
+  "version": "1.0.0"
+}

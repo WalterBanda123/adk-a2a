@@ -68,6 +68,7 @@ class FinancialService:
                 
             transactions = []
             
+            # Prioritize the transactions collection first, then try others
             collection_names = ['transactions', 'sales', 'records', 'business_transactions']
             
             # Convert datetime objects to date strings for comparison
@@ -76,11 +77,23 @@ class FinancialService:
             
             for collection_name in collection_names:
                 try:
+                    # Strategy 1: Query by user_id field
                     query = self.db.collection(collection_name).where('user_id', '==', user_id)
-                    
-                    # Filter by date string format (YYYY-MM-DD)
                     query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                    docs = query.get()
                     
+                    for doc in docs:
+                        if doc.exists:
+                            data = doc.to_dict()
+                            if data:  # Add null check
+                                data['id'] = doc.id
+                                data['collection'] = collection_name
+                                transactions.append(data)
+                    
+                    # Strategy 2: Query by userId field (camelCase) - try this regardless of previous results
+                    # This ensures we find all transactions regardless of which field is used
+                    query = self.db.collection(collection_name).where('userId', '==', user_id)
+                    query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                     docs = query.get()
                     
                     for doc in docs:
@@ -113,9 +126,22 @@ class FinancialService:
             end_date_str = end_date.strftime("%Y-%m-%d")
             
             try:
+                # Strategy 1: Query by user_id field
                 query = self.db.collection('sales').where('user_id', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                docs = query.get()
                 
+                for doc in docs:
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            sales.append(data)
+                
+                # Strategy 2: Query by userId field (camelCase) - try regardless of previous results
+                # This ensures we find all sales regardless of which field is used
+                query = self.db.collection('sales').where('userId', '==', user_id)
+                query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                 docs = query.get()
                 
                 for doc in docs:
@@ -146,9 +172,22 @@ class FinancialService:
             end_date_str = end_date.strftime("%Y-%m-%d")
             
             try:
+                # Strategy 1: Query by user_id field
                 query = self.db.collection('expenses').where('user_id', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                docs = query.get()
                 
+                for doc in docs:
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            expenses.append(data)
+                
+                # Strategy 2: Query by userId field (camelCase) - try regardless of previous results
+                # This ensures we find all expenses regardless of which field is used
+                query = self.db.collection('expenses').where('userId', '==', user_id)
+                query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                 docs = query.get()
                 
                 for doc in docs:
@@ -179,9 +218,22 @@ class FinancialService:
             end_date_str = end_date.strftime("%Y-%m-%d")
             
             try:
+                # Strategy 1: Query by user_id field
                 query = self.db.collection('inventory').where('user_id', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                docs = query.get()
                 
+                for doc in docs:
+                    if doc.exists:
+                        data = doc.to_dict()
+                        if data:  # Add null check
+                            data['id'] = doc.id
+                            inventory.append(data)
+                
+                # Strategy 2: Query by userId field (camelCase) - try regardless of previous results
+                # This ensures we find all inventory records regardless of which field is used
+                query = self.db.collection('inventory').where('userId', '==', user_id)
+                query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                 docs = query.get()
                 
                 for doc in docs:
@@ -203,26 +255,95 @@ class FinancialService:
     def _calculate_financial_metrics(self, transactions: List[Dict[str, Any]], 
                                    sales: List[Dict[str, Any]], 
                                    expenses: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Calculate financial metrics from the data"""
+        """Calculate financial metrics from the data with improved field detection"""
         
-        # Calculate revenue from completed transactions
-        total_revenue = 0
+        # Define possible field names for different values
+        amount_fields = ['amount', 'price', 'total', 'value', 'sale_amount', 'transaction_amount', 'payment']
+        status_fields = ['status', 'state', 'transaction_status']
+        completed_values = ['completed', 'complete', 'success', 'successful', 'paid', 'confirmed']
+        
+        # Helper function to get amount from different possible field names
+        def get_amount(item):
+            if not item:
+                return 0
+                
+            for field in amount_fields:
+                if field in item:
+                    try:
+                        value = item[field]
+                        # Convert to float if it's a string with possible commas
+                        if isinstance(value, str):
+                            value = float(value.replace(',', '').strip())
+                        return float(value)
+                    except (ValueError, TypeError):
+                        # If conversion fails, try next field
+                        continue
+            return 0
+            
+        # Helper function to check if transaction is completed
+        def is_completed(item):
+            if not item:
+                return False
+                
+            for field in status_fields:
+                if field in item and item[field] and str(item[field]).lower() in completed_values:
+                    return True
+                    
+            # If no status field or no completed status, assume it's valid
+            # This helps when the data doesn't follow the expected format
+            return True
+            
+        # Calculate revenue from transactions
+        total_revenue_transactions = 0
         completed_transactions = []
         
         for transaction in transactions:
-            if transaction and transaction.get('status') == 'completed':
-                amount = transaction.get('amount', 0)
-                if isinstance(amount, (int, float)):
-                    total_revenue += amount
-                    completed_transactions.append(transaction)
+            if is_completed(transaction):
+                amount = get_amount(transaction)
+                total_revenue_transactions += amount
+                completed_transactions.append(transaction)
+        
+        # Calculate revenue from sales (some systems store sales separately)
+        total_revenue_sales = 0
+        for sale in sales:
+            if is_completed(sale):
+                amount = get_amount(sale)
+                total_revenue_sales += amount
+                
+        # Use the higher of the two revenue calculations
+        # This handles cases where data might be in either collection
+        total_revenue = max(total_revenue_transactions, total_revenue_sales)
+        
+        # If both are zero but we have transaction or sales records, try to find any numeric values
+        if total_revenue == 0 and (transactions or sales):
+            logger.info("No standard amount fields found, checking for any numeric fields")
+            
+            # Try all possible fields that might contain monetary values
+            for item in transactions + sales:
+                if not item:
+                    continue
+                    
+                for key, value in item.items():
+                    # Skip obvious non-monetary fields
+                    if key.lower() in ['user_id', 'userid', 'id', 'date', 'timestamp', 'collection']:
+                        continue
+                        
+                    try:
+                        # Try to convert to number if it's a non-zero value
+                        if isinstance(value, str) and value:
+                            value = value.replace(',', '').strip()
+                        val = float(value)
+                        if val > 0:
+                            total_revenue += val
+                            logger.info(f"Adding value {val} from field {key}")
+                    except:
+                        continue
         
         # Calculate total expenses
         total_expenses = 0
         for expense in expenses:
-            if expense:
-                amount = expense.get('amount', 0)
-                if isinstance(amount, (int, float)):
-                    total_expenses += amount
+            amount = get_amount(expense)
+            total_expenses += amount
         
         # Calculate profit/loss
         profit_loss = total_revenue - total_expenses
@@ -230,8 +351,10 @@ class FinancialService:
         # Calculate profit margin
         profit_margin = (profit_loss / total_revenue * 100) if total_revenue > 0 else 0
         
-        # Count transactions
-        transaction_count = len(completed_transactions)
+        # Count transactions - use either completed transactions or all transactions if empty
+        transaction_count = len(completed_transactions) if completed_transactions else len(transactions)
+        if transaction_count == 0 and sales:
+            transaction_count = len(sales)  # Use sales count as fallback
         
         return {
             "total_revenue": total_revenue,

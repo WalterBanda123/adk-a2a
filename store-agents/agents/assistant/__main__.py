@@ -38,7 +38,7 @@ async def main():
         logger.info("TaskManager initialized with agent instance.")
 
         host = os.getenv("STORE_AGENTS_HOST", "127.0.0.1")
-        port = int(os.getenv("STORE_AGENTS_PORT", 8003))
+        port = int(os.getenv("STORE_AGENTS_PORT", 8004))  # Changed from 8003 to 8004
         
         app = create_agent_server(
             name=agent_instance.name,

@@ -1,0 +1,153 @@
+{
+  "name": "Product Model Schema",
+  "collection": "products",
+  "fields": {
+    "id": {
+      "type": "string",
+      "description": "Document ID (auto-generated)",
+      "required": false
+    },
+    "userId": {
+      "type": "string",
+      "description": "Owner user ID (standardized field)",
+      "required": true
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Product name",
+      "required": true
+    },
+    "name": {
+      "type": "string",
+      "description": "Alias for product_name (for compatibility)",
+      "required": false
+    },
+    "description": {
+      "type": "string",
+      "description": "Product description",
+      "required": false
+    },
+    "category": {
+      "type": "string",
+      "description": "Product category",
+      "required": true
+    },
+    "subcategory": {
+      "type": "string",
+      "description": "Product subcategory",
+      "required": false
+    },
+    "brand": {
+      "type": "string",
+      "description": "Product brand",
+      "required": false
+    },
+    "unit_price": {
+      "type": "number",
+      "description": "Selling price per unit",
+      "required": true
+    },
+    "unitPrice": {
+      "type": "number",
+      "description": "Alias for unit_price (for compatibility)",
+      "required": false
+    },
+    "cost_price": {
+      "type": "number",
+      "description": "Cost price per unit",
+      "required": false
+    },
+    "stock_quantity": {
+      "type": "number",
+      "description": "Current stock quantity",
+      "required": true
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Alias for stock_quantity",
+      "required": false
+    },
+    "unit_of_measure": {
+      "type": "string",
+      "description": "Unit of measurement",
+      "required": true
+    },
+    "unit": {
+      "type": "string",
+      "description": "Alias for unit_of_measure",
+      "required": false
+    },
+    "reorder_point": {
+      "type": "number",
+      "description": "Minimum stock level",
+      "required": false,
+      "default": 5
+    },
+    "status": {
+      "type": "string",
+      "description": "Product status",
+      "required": true,
+      "default": "active",
+      "enum": [
+        "active",
+        "inactive",
+        "discontinued"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "description": "Creation timestamp (ISO format)",
+      "required": true
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "Last update timestamp",
+      "required": true
+    },
+    "createdAt": {
+      "type": "timestamp",
+      "description": "Legacy timestamp field",
+      "required": false
+    },
+    "lastRestocked": {
+      "type": "string",
+      "description": "Last restock date",
+      "required": false
+    },
+    "image": {
+      "type": "string",
+      "description": "Product image URL",
+      "required": false
+    },
+    "barcode": {
+      "type": "string",
+      "description": "Product barcode/SKU",
+      "required": false
+    },
+    "sku": {
+      "type": "string",
+      "description": "Stock keeping unit",
+      "required": false
+    },
+    "supplier": {
+      "type": "string",
+      "description": "Supplier name",
+      "required": false
+    },
+    "confidence": {
+      "type": "number",
+      "description": "AI detection confidence",
+      "required": false
+    },
+    "processing_time": {
+      "type": "number",
+      "description": "Processing time for AI detection",
+      "required": false
+    },
+    "size": {
+      "type": "number",
+      "description": "Product size/volume",
+      "required": false
+    }
+  }
+}
