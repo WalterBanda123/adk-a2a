@@ -1,0 +1,7 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: store-agents-ssl-cert
+spec:
+  domains:
+    - store-agents.your-domain.com  # Replace with your actual domain

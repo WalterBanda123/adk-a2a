@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-agents-app
+  labels:
+    app: store-agents
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: store-agents
+  template:
+    metadata:
+      labels:
+        app: store-agents
+    spec:
+      containers:
+      - name: store-agents
+        image: gcr.io/deve-01/store-agents:latest
+        ports:
+        - containerPort: 8003
+        env:
+        - name: STORE_AGENTS_HOST
+          value: "0.0.0.0"
+        - name: STORE_AGENTS_PORT
+          value: "8003"
+        - name: GOOGLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: store-agents-secrets
+              key: google-api-key
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/secrets/service-account-key.json"
+        volumeMounts:
+        - name: service-account-key
+          mountPath: /secrets
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: service-account-key
+        secret:
+          secretName: store-agents-secrets
+          items:
+          - key: service-account-key
+            path: service-account-key.json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: store-agents-service
+  labels:
+    app: store-agents
+spec:
+  selector:
+    app: store-agents
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8003
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: store-agents-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "store-agents-ip"  # Optional: if you have a reserved IP
+    networking.gke.io/managed-certificates: "store-agents-ssl-cert"  # Optional: for SSL
+spec:
+  rules:
+  - host: store-agents.your-domain.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: store-agents-service
+            port:
+              number: 80
+  - http:  # Fallback for IP access
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: store-agents-service
+            port:
+              number: 80

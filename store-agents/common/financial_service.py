@@ -127,7 +127,7 @@ class FinancialService:
             
             try:
                 # Strategy 1: Query by user_id field
-                query = self.db.collection('sales').where('user_id', '==', user_id)
+                query = self.db.collection('transactions').where('userId', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                 docs = query.get()
                 
@@ -173,7 +173,7 @@ class FinancialService:
             
             try:
                 # Strategy 1: Query by user_id field
-                query = self.db.collection('expenses').where('user_id', '==', user_id)
+                query = self.db.collection('expenses').where('userId', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                 docs = query.get()
                 
@@ -219,8 +219,8 @@ class FinancialService:
             
             try:
                 # Strategy 1: Query by user_id field
-                query = self.db.collection('inventory').where('user_id', '==', user_id)
-                query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
+                query = self.db.collection('products').where('userId', '==', user_id)
+                query = query.where('createdAt', '>=', start_date_str).where('createdAt', '<=', end_date_str)
                 docs = query.get()
                 
                 for doc in docs:
@@ -232,7 +232,7 @@ class FinancialService:
                 
                 # Strategy 2: Query by userId field (camelCase) - try regardless of previous results
                 # This ensures we find all inventory records regardless of which field is used
-                query = self.db.collection('inventory').where('userId', '==', user_id)
+                query = self.db.collection('products').where('userId', '==', user_id)
                 query = query.where('date', '>=', start_date_str).where('date', '<=', end_date_str)
                 docs = query.get()
                 

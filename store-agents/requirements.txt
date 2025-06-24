@@ -6,3 +6,6 @@ firebase-admin
 python-dotenv
 litellm
 requests
+fastapi
+uvicorn[standard]
+pydantic

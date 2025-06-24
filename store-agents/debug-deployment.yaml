@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-agents-debug
+  labels:
+    app: store-agents-debug
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: store-agents-debug
+  template:
+    metadata:
+      labels:
+        app: store-agents-debug
+    spec:
+      containers:
+      - name: store-agents
+        image: gcr.io/deve-01/store-agents:latest
+        ports:
+        - containerPort: 8003
+        env:
+        - name: STORE_AGENTS_HOST
+          value: "0.0.0.0"
+        - name: STORE_AGENTS_PORT
+          value: "8003"
+        - name: GOOGLE_API_KEY
+          value: "AIzaSyB6EllDOToFUFh202gcPLPXOcL982Z3Lqs"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        # No health checks for debugging
+        # No volume mounts for debugging

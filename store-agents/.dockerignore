@@ -1,0 +1,70 @@
+# Dockerignore file for the store-agents application
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# VS Code
+.vscode/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Development files
+*.env
+.env.*
+!.env.example
+
+# Local data directories
+data/
+reports/
+logs/
+server.log
+vision_service.log
+
+# Archive and docs (reduce image size)
+archive/
+docs/
+
+# Test files
+tests/
+test_*/
+
+# Scripts that aren't needed in production
+scripts/
+*.sh
+
+# Development configs
+docker-compose.yml
+k8s/
+
+# IDE files
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/

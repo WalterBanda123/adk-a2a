@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-agents-app
+  labels:
+    app: store-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: store-agents
+  template:
+    metadata:
+      labels:
+        app: store-agents
+    spec:
+      containers:
+      - name: store-agents
+        image: gcr.io/deve-01/store-agents:v5
+        ports:
+        - containerPort: 8003
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/app/service-account-key.json"
+        - name: GOOGLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: store-agents-secrets
+              key: google-api-key
+        volumeMounts:
+        - name: service-account-key
+          mountPath: "/app/service-account-key.json"
+          subPath: service-account-key.json
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: service-account-key
+        secret:
+          secretName: store-agents-secrets
+          items:
+          - key: service-account-key
+            path: service-account-key.json
